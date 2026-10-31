@@ -2,7 +2,7 @@
 """Stage 5 review aid: one self-contained HTML page with each scanned page next to its corrected text.
 
 Usage: make_compare.py BOOK_DIR OUT_HTML --first-page 23
-Uses BOOK_DIR/02_pages/*.png and BOOK_DIR/04_text_fixed/*.md.
+Uses BOOK_DIR/02_pages/NNN.png (or .jpg) and BOOK_DIR/04_text_fixed/*.md.
 """
 import argparse
 import base64
@@ -48,17 +48,26 @@ def main():
     ap.add_argument("book_dir")
     ap.add_argument("out_html")
     ap.add_argument("--first-page", type=int, default=1)
+    ap.add_argument("--page-map", help="JSON {\"029\": 41, ...} overriding page numbers (skipped/duplicate photos)")
     args = ap.parse_args()
-    rows = []
+    pmap = {}
+    if args.page_map:
+        import json
+        pmap = {k: int(v) for k, v in json.load(open(args.page_map)).items()}
+    rows, pages = [], []
     for f in sorted(os.listdir(os.path.join(args.book_dir, "04_text_fixed"))):
         stem = f[:3]
-        page = args.first_page + int(stem) - 1
-        img = jpeg_b64(os.path.join(args.book_dir, "02_pages", stem + ".png"))
+        page = pmap.get(stem, args.first_page + int(stem) - 1)
+        pages.append(page)
+        ip = os.path.join(args.book_dir, "02_pages", stem + ".png")
+        if not os.path.exists(ip):
+            ip = ip[:-4] + ".jpg"
+        img = jpeg_b64(ip)
         md = open(os.path.join(args.book_dir, "04_text_fixed", f), encoding="utf-8").read()
         rows.append(f'<section id="p{page}"><h2>עמוד {page}</h2><div class="row">'
                     f'<img src="data:image/jpeg;base64,{img}" alt="סריקה עמוד {page}">'
                     f'<div class="text">{render(md)}</div></div></section>')
-    nav = " ".join(f'<a href="#p{args.first_page + i}">{args.first_page + i}</a>' for i in range(len(rows)))
+    nav = " ".join(f'<a href="#p{p}">{p}</a>' for p in pages)
     doc = f"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>השוואת סריקה וטקסט</title>
 <style>

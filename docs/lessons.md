@@ -32,3 +32,29 @@ See the docstring of `scripts/assemble_book.py`. Key rules: first line `+` = par
 - pandoc sets lang="he" but not dir="rtl" on `<html>`; `fix_epub_rtl.py` adds it. CSS `direction` is forbidden by epubcheck.
 - epubcheck 5.1.0 (from GitHub releases) passes with 0 errors.
 - Font: David Libre (OFL) from raw.githubusercontent.com/google/fonts, embedded.
+
+## Second book: Schiff, "יישוב סכסוכים בזירה הבינלאומית" ch. 1 (textbook, 49 phone photos)
+Textbook layout: margin notes, framed boxes, tables, photos, cartoons, charts, lists. What changed in the process:
+
+### Environment
+- apt in the cloud container ignores the proxy and uses http sources. Fix: `/etc/apt/apt.conf.d/99proxy` with `Acquire::http::Proxy` and `Acquire::https::Proxy` set to `$HTTPS_PROXY`, switch `/etc/apt/sources.list.d/ubuntu.sources` to https, and move docker.list aside. Then `apt-get install tesseract-ocr hunspell-he epubcheck` work. pypi stays blocked, so scripts use only numpy + Pillow (no opencv).
+- Debian's `/usr/bin/epubcheck` is a jar: run `java -jar /usr/bin/epubcheck FILE`, and give it an ASCII file name (a Hebrew name fails with "File not found" under the default locale).
+- Headless Chromium here paints a blank page for any document with `dir="rtl"`; drop the attribute when taking QA screenshots.
+
+### OCR
+- Phone photos bend: the main column, margin notes and boxes sit at different angles (e.g. 2.0°, -1.2°, 0.9° on one page). `ocr_regions.py` runs a Tesseract layout pass, deskews each block separately, then OCRs it with psm 6. Quality was good enough to correct from.
+- Detect duplicate or missing photos by grepping running-header page numbers in the OCR output. Here one page was photographed twice (deleted) and the mapping is passed as `--page-map page_map.json` to `assemble_book.py` and `make_compare.py`.
+- A photo can cut off a heading or the edge of a margin note. Mark it in the text (`[שם הסעיף נחתך בצילום]`) and list reconstructed words in `uncertain.txt` for the reader.
+- `check_vs_ocr.py` lists corrected words that are not within one edit of any OCR word on that page: a fast typo queue. Boxes moved from the next page show up as expected noise.
+
+### Structure (page-file additions)
+- `::: box` ... `:::` for framed boxes; a box that runs across pages is written whole on the page where it starts.
+- Margin notes with `*` become footnotes; caption-only margin text becomes the image caption.
+- `![caption](img/NAME.jpg)` for figures; a later block that starts with `+` continues the last paragraph when a figure interrupts it.
+- Pipe tables with `: caption`; list cells use `• item<br>` (assemble_book turns `<br>` into XHTML `<br />`, otherwise epubcheck fails).
+- Citations printed in RTL come out reversed (`(Richmond, 2005 ;2001`); write them in logical order.
+- pandoc turns a fenced div that starts with a heading into `<section class="level4 box">`, so CSS must target `.box`, not `div.box`.
+
+### Figures
+- Crop photos from the ORIGINAL images (`00_render`), not from the cleaned grayscale pages: the cleanup washes photos out and drops color (two cartoons and two photos here are in color). Coordinates in `figs_orig.txt` with a light `-level`; line art can come from `02_pages` with a stronger level (`crops.txt`).
+- To find coordinates fast: 20% thumbnails with a 200 px grid, then a 25% preview montage of the crops.

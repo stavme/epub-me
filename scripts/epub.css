@@ -12,3 +12,16 @@ em { font-style: normal; font-weight: bold; }
 .foreign { font-style: italic; }
 p.sep { text-align: center; text-indent: 0; margin: 1em 0; }
 section.footnotes, aside[epub|type~="footnote"] { font-size: 0.9em; }
+h4 { font-size: 1em; font-weight: bold; text-align: start; margin: 1.2em 0 0.4em; }
+h4 + p, li p, .box p:first-child, .epigraph p, figure + p, table + p { text-indent: 0; }
+.box { border: 1px solid #555; background: #f2f2f2; padding: 0.4em 0.8em; margin: 1.2em 0; font-size: 0.95em; }
+.box h4 { margin-top: 0.4em; }
+.epigraph { margin: 1.5em 2em; font-size: 0.95em; }
+ol { margin: 0.5em 0; padding-inline-start: 1.6em; }
+figure { margin: 1.2em 0; text-align: center; }
+figure img { max-width: 100%; }
+figcaption { font-size: 0.85em; text-align: justify; margin-top: 0.3em; }
+table { border-collapse: collapse; margin: 1em auto; }
+td, th { border: 1px solid #555; padding: 0.3em 0.6em; text-align: start; vertical-align: top; }
+th { text-align: center; }
+caption { font-size: 0.9em; caption-side: top; margin-bottom: 0.3em; }
