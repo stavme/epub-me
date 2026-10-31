@@ -58,3 +58,11 @@ Textbook layout: margin notes, framed boxes, tables, photos, cartoons, charts, l
 ### Figures
 - Crop photos from the ORIGINAL images (`00_render`), not from the cleaned grayscale pages: the cleanup washes photos out and drops color (two cartoons and two photos here are in color). Coordinates in `figs_orig.txt` with a light `-level`; line art can come from `02_pages` with a stronger level (`crops.txt`).
 - To find coordinates fast: 20% thumbnails with a 200 px grid, then a 25% preview montage of the crops.
+
+## Third book: Hobbes, "לויתן" ch. 13 (4 phone photos of photocopies, pp. 113-119)
+- Check every upload with `file` first. The first upload was named `.docx` but was the HTML of a Moodle (lemida.biu.ac.il) guest-login page, saved while logged out.
+- `prep_pages.py` needs OpenCV: `apt-get install python3-opencv` installs it only for `/usr/bin/python3.12`, not for the default `/usr/local/bin/python3`. Run prep with python3.12.
+- Photocopied spreads with a pasted-over gutter: the auto gutter (min ink in the 40-60% band) failed on 2 of 3 spreads (dark copy line off-centre, pages overlapping). Look at a montage after prep and split by hand with `convert -crop` when a half shows text from the other page, then feed the halves back in as singles.
+- Copier edges cut the first or last 1-2 letters of every line on one side of each page. OCR leaves junk there; reconstruct from context while reading the image, and list only the doubtful ones in `uncertain.txt`. `check_vs_ocr.py` then lists exactly the reconstructed words.
+- Letter-spaced run-in phrases at paragraph starts are Hobbes's margin summaries; written as `**...**` (bold). When one spans a page break, put the whole phrase on the earlier page.
+- Student underlining in the copies is ignored.
