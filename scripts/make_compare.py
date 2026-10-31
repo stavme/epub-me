@@ -57,14 +57,18 @@ def main():
     doc = f"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>השוואת סריקה וטקסט</title>
 <style>
-body{{font-family:"David Libre","Frank Ruehl CLM",serif;margin:0 16px;background:#fff;color:#111}}
-nav{{position:sticky;top:0;background:#fff;padding:8px 0;border-bottom:1px solid #ccc;line-height:2}}
+:root{{--bg:#ffffff;--fg:#1a1a1a;--muted:#666;--line:#d0d0d0;--link:#0b5cad}}
+@media (prefers-color-scheme:dark){{:root:not([data-theme="light"]){{--bg:#161616;--fg:#e8e8e8;--muted:#a0a0a0;--line:#3a3a3a;--link:#7ab7ff}}}}
+:root[data-theme="dark"]{{--bg:#161616;--fg:#e8e8e8;--muted:#a0a0a0;--line:#3a3a3a;--link:#7ab7ff}}
+body{{font-family:"David Libre","Frank Ruehl CLM",serif;margin:0 16px;background:var(--bg);color:var(--fg)}}
+a{{color:var(--link)}}
+nav{{position:sticky;top:0;background:var(--bg);padding:8px 0;border-bottom:1px solid var(--line);line-height:2}}
 nav a{{margin-inline-end:8px}}
 .row{{display:flex;gap:16px;align-items:flex-start}}
-.row img{{width:50%;max-width:600px;border:1px solid #ccc}}
-.text{{flex:1;font-size:18px;line-height:1.6}}
-.note{{font-size:15px;color:#444;border-top:1px solid #ccc;padding-top:6px}}
-.cont{{color:#888;font-size:13px}}
+.row img{{width:50%;max-width:600px;border:1px solid var(--line);background:#fff}}
+.text{{flex:1;font-size:18px;line-height:1.6;min-width:0}}
+.note{{font-size:15px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}}
+.cont{{color:var(--muted);font-size:13px}}
 @media (max-width:700px){{.row{{flex-direction:column}}.row img{{width:100%}}}}
 </style></head><body><h1>השוואת סריקה וטקסט</h1><nav>{nav}</nav>{''.join(rows)}</body></html>"""
     with open(args.out_html, "w", encoding="utf-8") as fh:
