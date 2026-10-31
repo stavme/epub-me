@@ -58,3 +58,7 @@ Textbook layout: margin notes, framed boxes, tables, photos, cartoons, charts, l
 ### Figures
 - Crop photos from the ORIGINAL images (`00_render`), not from the cleaned grayscale pages: the cleanup washes photos out and drops color (two cartoons and two photos here are in color). Coordinates in `figs_orig.txt` with a light `-level`; line art can come from `02_pages` with a stronger level (`crops.txt`).
 - To find coordinates fast: 20% thumbnails with a 200 px grid, then a 25% preview montage of the crops.
+
+## Delivery and intake (both books)
+- Finished EPUBs go to Dropbox `Apps/EpubMe` with `scripts/dropbox_upload.py FILE [/dest]`. It needs DROPBOX_APP_KEY, DROPBOX_APP_SECRET and DROPBOX_REFRESH_TOKEN in the cloud environment, network access to api.dropboxapi.com and content.dropboxapi.com, and app scopes files.content.write/read. The Google Drive connector can't upload binary EPUBs.
+- Check every upload with `file` (magic bytes) before choosing a pipeline. Course files come from a Moodle site; a link saved while logged out gives an HTML login page that still carries the expected name and extension (e.g. `.docx`).
