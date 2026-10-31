@@ -33,7 +33,12 @@ def render(md):
             cls = ' class="note"'
         t = html.escape(b)
         t = re.sub(r"\*([^*]+?)\*", r"<b>\1</b>", t)
-        t = re.sub(r"^(#+) ", "", t)
+        hm = re.match(r"^(#+) ", t)
+        if hm:
+            level = len(hm.group(1))
+            label = {1: "כותרת ספר", 2: "כותרת פרק", 3: "כותרת משנה"}.get(level, "כותרת")
+            out.append(f'<p class="h" data-l="{label}">{t[hm.end():]}</p>')
+            continue
         out.append(f"<p{cls}>{t}</p>")
     return "\n".join(out)
 
@@ -69,6 +74,7 @@ nav a{{margin-inline-end:8px}}
 .text{{flex:1;font-size:18px;line-height:1.6;min-width:0}}
 .note{{font-size:15px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}}
 .cont{{color:var(--muted);font-size:13px}}
+.h{{font-weight:bold;text-align:center;margin:12px 0}}.h::before{{content:attr(data-l);display:block;font-size:12px;font-weight:normal;color:var(--muted)}}
 @media (max-width:700px){{.row{{flex-direction:column}}.row img{{width:100%}}}}
 </style></head><body><h1>השוואת סריקה וטקסט</h1><nav>{nav}</nav>{''.join(rows)}</body></html>"""
     with open(args.out_html, "w", encoding="utf-8") as fh:
