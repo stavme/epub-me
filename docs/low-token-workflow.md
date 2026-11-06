@@ -13,6 +13,11 @@ else from disk, and page images never enter the main conversation.
 
 ## Steps
 
+0. **Text or scan?** `check_pdf.py FILE.pdf BOOK/04_text_fixed`. If the PDF
+   already has a text layer (born-digital), it writes the page files directly
+   and steps 2-5 and 7 are skipped: go to structure (6) and build (8) after a
+   look at one page's word order. A "scan" or "mixed" result runs the full
+   pipeline (for "mixed", only the listed pages need OCR).
 1. **Setup** (once per container, ~20 s): `scripts/setup_env.sh`.
    It can also be pasted into the cloud environment's setup script.
 2. **Prep**: rotate to upright (`tesseract --psm 0`), then
