@@ -36,7 +36,7 @@ if [ ${#need[@]} -gt 0 ]; then
 fi
 
 python3 -c "import cv2, numpy, PIL" 2>/dev/null ||
-  python3 -m pip install -q opencv-python-headless numpy pillow 2>/dev/null ||
+  python3 -m pip install -q opencv-python-headless numpy pillow pdfplumber 2>/dev/null ||
   { echo "error: could not install cv2/numpy/Pillow for $(command -v python3)" >&2; exit 1; }
 
 mkdir -p "$TOOLS/tessdata" "$TOOLS/fonts"

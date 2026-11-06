@@ -18,6 +18,12 @@ else from disk, and page images never enter the main conversation.
    and steps 2-5 and 7 are skipped: go to structure (6) and build (8) after a
    look at one page's word order. A "scan" or "mixed" result runs the full
    pipeline (for "mixed", only the listed pages need OCR).
+   With pdfplumber installed (setup_env.sh does it), the text pages also get
+   structure from the PDF itself: paragraph breaks from line gaps and short
+   lines, `#`/`##`/`###` from type size, `**bold**` from bold fonts (word by
+   word), `+` when a page starts mid-paragraph, and Latin/number runs put back
+   in logical order (`(diversity)`, `ב־184`, `(עזר, 2004)`). Table cells come out
+   joined with ` | ` on one line: grep for `|` and fix those by hand.
 1. **Setup** (once per container, ~20 s): `scripts/setup_env.sh`.
    It can also be pasted into the cloud environment's setup script.
 2. **Prep**: rotate to upright (`tesseract --psm 0`), then
