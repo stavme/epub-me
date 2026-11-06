@@ -95,6 +95,8 @@ def main():
     ap.add_argument("in_dir")
     ap.add_argument("out_root")
     ap.add_argument("--spread-ratio", type=float, default=1.2)
+    ap.add_argument("--gutter", nargs="*", default=[], metavar="FILE=X",
+                    help="override the split column for a spread, e.g. 3.jpg=987")
     args = ap.parse_args()
 
     out_rev = os.path.join(args.out_root, "02_pages")
@@ -102,6 +104,7 @@ def main():
     os.makedirs(out_rev, exist_ok=True)
     os.makedirs(out_ocr, exist_ok=True)
 
+    gut_over = {k: int(v) for k, v in (g.split("=") for g in args.gutter)}
     manifest = []
     seq = 0
     for name in sorted(os.listdir(args.in_dir)):
@@ -110,7 +113,10 @@ def main():
         gray = cv2.imread(os.path.join(args.in_dir, name), cv2.IMREAD_GRAYSCALE)
         h, w = gray.shape
         if w / h > args.spread_ratio:
-            g = find_gutter(gray)
+            g = gut_over.get(name) or find_gutter(gray)
+            if name not in gut_over and abs(g - w / 2) > 0.06 * w:
+                print(f"WARNING {name}: gutter at {g}/{w} is far from the middle; check a "
+                      f"500px thumbnail and rerun with --gutter {name}=X", file=sys.stderr)
             # Hebrew: right half is read first
             halves = [("right", gray[:, g:]), ("left", gray[:, :g])]
             gutter = g
