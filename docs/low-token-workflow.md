@@ -11,6 +11,20 @@ else from disk, and page images never enter the main conversation.
 - Each book re-derived setup (apt proxy, tessdata, epubcheck) and debugged scripts.
 - Visual QA of the comparison page and the EPUB.
 
+## Short version: two commands
+
+```
+scripts/convert.sh start  SOURCE BOOK          # PDF, photo folder, or "dropbox"
+# scans only: helper agent (Sonnet) writes BOOK/03_queue/fixes.txt
+# structure pass on BOOK/04_text_fixed (Edit small spots, text only)
+scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME [--first-page N] [--upload]
+```
+
+Every tool call re-reads the whole conversation (over 95% of a thread's
+tokens on 2026-11-06), so a conversion thread should be a handful of calls:
+start, helper agent, a few structure edits, finish. Don't debug or extend the
+scripts inside a conversion thread; note the problem and fix it separately.
+
 ## Steps
 
 - **Intake**: don't attach scans to the conversation (an attachment is read
