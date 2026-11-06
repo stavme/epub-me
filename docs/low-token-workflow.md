@@ -13,6 +13,9 @@ else from disk, and page images never enter the main conversation.
 
 ## Steps
 
+- **Intake**: don't attach scans to the conversation (an attachment is read
+  into context). Drop them in Dropbox `Apps/EpubMe/inbox` and run
+  `dropbox_fetch.py BOOK/00_src`; files move to `/inbox/done` afterwards.
 0. **Text or scan?** `check_pdf.py FILE.pdf BOOK/04_text_fixed`. If the PDF
    already has a text layer (born-digital), it writes the page files directly
    and steps 2-5 and 7 are skipped: go to structure (6) and build (8) after a
