@@ -28,7 +28,7 @@ def main():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        m = re.match(r"(\d+)[\s:.)-]+(.*)$", line)
+        m = re.match(r"(\d+)[\s:.)]+(.*)$", line)
         if not m:
             sys.exit(f"bad fixes line: {line!r}")
         fixes[int(m.group(1))] = m.group(2).strip()

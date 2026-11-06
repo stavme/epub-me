@@ -47,13 +47,16 @@ def tsv_words(path, tessdata, lang, psm=6):
     if tessdata:
         cmd[1:1] = ["--tessdata-dir", tessdata]
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    if not out.startswith("level"):
+        sys.exit("tesseract did not return TSV: copy configs/ and tessconfigs/ next to the "
+                 "tessdata_best model (setup_env.sh does this)")
     words = []
     for r in csv.DictReader(io.StringIO(out), delimiter="\t", quoting=csv.QUOTE_NONE):
         if r["level"] == "5" and r["text"].strip():
             x, y, w, h = (int(r[k]) for k in ("left", "top", "width", "height"))
             words.append({"text": r["text"].strip(), "conf": float(r["conf"]),
                           "box": (x, y, x + w, y + h),
-                          "line": (int(r["par_num"]), int(r["line_num"]))})
+                          "line": (int(r["block_num"]), int(r["par_num"]), int(r["line_num"]))})
     return words
 
 
@@ -193,8 +196,12 @@ def main():
     ap.add_argument("--per-sheet", type=int, default=40)
     ap.add_argument("--only", nargs="*")
     args = ap.parse_args()
-    for sub in ("draft", "blocks"):
-        os.makedirs(os.path.join(args.out_dir, sub), exist_ok=True)
+    for sub in ("draft", "blocks", "sheets"):  # a rerun must not mix with old output
+        d = os.path.join(args.out_dir, sub)
+        if os.path.isdir(d):
+            for f in os.listdir(d):
+                os.remove(os.path.join(d, f))
+        os.makedirs(d, exist_ok=True)
 
     pages = []
     for name in sorted(os.listdir(args.in_dir)):
@@ -260,7 +267,16 @@ def main():
                 if i in used or any(overlap(f["box"], w["box"]) > 0.2 for w in best):
                     continue
                 f.update(why=["missing"], alt=f["text"], text="", img=blk, lbox=f["box"])
-                lines.append({"words": [f], "box": f["box"]})
+                # put it into the line it sits on, at its horizontal position
+                def vov(l):
+                    return min(l["box"][3], f["box"][3]) - max(l["box"][1], f["box"][1])
+                host = max(lines, key=vov, default=None)
+                if host and vov(host) > 0.5 * (f["box"][3] - f["box"][1]):
+                    f["lbox"] = host["box"]
+                    host["words"].append(f)
+                    host["words"].sort(key=lambda w: -w["box"][2])
+                else:
+                    lines.append({"words": [f], "box": f["box"]})
             # ink inside the block that no model read
             hs = sorted(w["box"][3] - w["box"][1] for w in best) or [20]
             for ub in uncovered(blk, [w["box"] for w in best + fast], hs[len(hs) // 2] // 2):
@@ -294,10 +310,11 @@ def main():
             edge.setdefault(letters(ptext(para)), set()).add(stem)
     headers = []
     for stem, paras, _ in pages:
-        for para in [p for p in (paras[:1] + paras[-1:]) if p in paras]:
+        for para in {id(p): p for p in paras[:1] + paras[-1:]}.values():
             t = ptext(para)
-            if len(t.split()) <= 5 and (re.search(r"\d", t) or len(edge.get(letters(t), ())) > 1
-                                        or not letters(t)):
+            page_number = re.search(r"\d", t) and not letters(t)
+            running = letters(t) and len(edge.get(letters(t), ())) > 1
+            if len(t.split()) <= 5 and (page_number or running):
                 paras.remove(para)
                 headers.append(f"{stem}\t{t}")
 

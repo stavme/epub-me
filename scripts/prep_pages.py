@@ -101,8 +101,10 @@ def main():
 
     out_rev = os.path.join(args.out_root, "02_pages")
     out_ocr = os.path.join(args.out_root, "02_pages_ocr")
-    os.makedirs(out_rev, exist_ok=True)
-    os.makedirs(out_ocr, exist_ok=True)
+    for d in (out_rev, out_ocr):  # drop pages left over from an earlier run
+        os.makedirs(d, exist_ok=True)
+        for f in os.listdir(d):
+            os.remove(os.path.join(d, f))
 
     gut_over = {k: int(v) for k, v in (g.split("=") for g in args.gutter)}
     manifest = []
