@@ -21,7 +21,10 @@ import re
 import subprocess
 import sys
 
-HEB = re.compile(r"[א-ת]")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pdf_blocks  # noqa: E402
+
+HEB = re.compile(r"[A-Za-zא-ת]")  # any letters: English PDFs count too
 FINALS_AT_START = re.compile(r"(?:^|\s)[םןץףך][א-ת]")
 FINALS_AT_END = re.compile(r"[א-ת][םןץףך](?:$|[\s.,;:!?])")
 
@@ -31,8 +34,13 @@ def page_count(pdf):
     return int(re.search(r"^Pages:\s+(\d+)", info, re.M).group(1))
 
 
-def page_text(pdf, n):
-    return subprocess.run(["pdftotext", "-f", str(n), "-l", str(n), "-enc", "UTF-8", pdf, "-"],
+def page_text(pdf, n, crop=None):
+    """pdftotext of page n; crop=(x0, y0, x1, y1) in points limits it to that box."""
+    box = []
+    if crop:
+        x0, y0, x1, y1 = crop
+        box = ["-x", str(int(x0)), "-y", str(int(y0)), "-W", str(int(x1 - x0) + 1), "-H", str(int(y1 - y0) + 1)]
+    return subprocess.run(["pdftotext", "-f", str(n), "-l", str(n), "-r", "72", *box, "-enc", "UTF-8", pdf, "-"],
                           capture_output=True, text=True, check=True).stdout
 
 
@@ -108,13 +116,27 @@ def mark_bold(t, boldw):
     return " ".join(out)
 
 
-def layout_page(pdf_path, page, n):
+def page_stats(geo):
+    """Body type size, right and left text edges, typical line step of a page."""
+    import collections
+    body = collections.Counter(g["size"] for g in geo).most_common(1)[0][0]
+    right = max(g["x1"] for g in geo if g["size"] == body)
+    left = min(g["x0"] for g in geo if g["size"] == body)
+    tops = sorted(g["top"] for g in geo if g["size"] == body)
+    steps = [b - a for a, b in zip(tops, tops[1:]) if b > a]
+    step = sorted(steps)[len(steps) // 2] if steps else body * 1.4
+    return body, right, left, step
+
+
+def layout_page(pdf_path, page, n, crop=None, stats=None):
     """With pdfplumber: use line geometry and fonts for structure. A vertical gap
     or a short line ends a paragraph; very large type is a heading (# for the
     biggest on the first page, ## otherwise); bold lines become **bold**.
     Lines are matched to pdftotext's (logical-order) lines by letter content."""
     import collections
-    raw = page_text(pdf_path, n)
+    raw = page_text(pdf_path, n, crop)
+    if crop:
+        page = page.crop(crop)
     lines = [l for l in fix_order(raw).splitlines() if l.strip()]
     geo = []
     for l in page.extract_text_lines(layout=False):
@@ -133,13 +155,8 @@ def layout_page(pdf_path, page, n):
     for w in page.extract_words(extra_attrs=["fontname"]):
         if "Bol" in w["fontname"] and key(w["text"]):
             min(geo, key=lambda g: abs(g["top"] - w["top"]))["boldw"][key(w["text"])] += 1
-    body = collections.Counter(g["size"] for g in geo).most_common(1)[0][0]
-    right = max(g["x1"] for g in geo if g["size"] == body)
-    left = min(g["x0"] for g in geo if g["size"] == body)
+    body, right, left, step = stats or page_stats(geo)
     width = right - left
-    tops = sorted(g["top"] for g in geo if g["size"] == body)
-    steps = [b - a for a, b in zip(tops, tops[1:]) if b > a]
-    step = sorted(steps)[len(steps) // 2] if steps else body * 1.4
     j, rows = 0, []
     for t in lines:
         c = collections.Counter(ch for ch in t if ch.isalnum())
@@ -198,6 +215,17 @@ def layout_page(pdf_path, page, n):
     return "\n\n".join(out) + "\n"
 
 
+def geo_all(page):
+    import collections
+    out = []
+    for l in page.extract_text_lines(layout=False):
+        ch = [c for c in l["chars"] if c["text"].strip()]
+        if ch:
+            size = collections.Counter(round(c["size"]) for c in ch).most_common(1)[0][0]
+            out.append(dict(top=l["top"], bottom=l["bottom"], x0=l["x0"], x1=l["x1"], size=size))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
@@ -222,14 +250,36 @@ def main():
             pages = None
             print("pdfplumber missing: paragraphs follow pdftotext only (pip install pdfplumber)")
         prev_md = ""
+        limits, dropped = ([(0, p.height) for p in pages], set()) if not pages else pdf_blocks.running_bands(pages)
+        if dropped:
+            print("dropped running header/footer lines: " + "; ".join(sorted(dropped))[:300])
+        img_dir = os.path.join(os.path.dirname(os.path.abspath(a.out_dir)), "img")
+        n_tab = n_fig = 0
         for i, t in enumerate(texts, 1):
-            md = layout_page(a.pdf, pages[i - 1], i) if pages else to_paragraphs(fix_order(t))
+            if pages:
+                pg = pages[i - 1]
+                full = [g for g in geo_all(pg) if limits[i - 1][0] <= g["top"] and g["bottom"] <= limits[i - 1][1] + 1]
+                stats = page_stats(full) if full else None
+                parts = []
+                for r in pdf_blocks.split_page(pg, a.pdf, i, fix_order, tidy, limits[i - 1], img_dir):
+                    if r[0] == "md":
+                        parts.append(r[3]); n_tab += r[3].startswith("|"); n_fig += r[3].startswith("![")
+                    else:
+                        s_ = layout_page(a.pdf, pg, i, (0, r[1], pg.width, r[2]), stats)
+                        if s_.strip():
+                            parts.append(s_.strip())
+                md = "\n\n".join(parts) + "\n"
+                # a short paragraph that is all bold with no final period is a heading
+                md = re.sub(r"(?m)^\*\*([^*\n]{2,100}[^.*\n:])\*\*$", r"### \1", md)
+            else:
+                md = to_paragraphs(fix_order(t))
             # a page that starts mid-paragraph continues the previous one ("+")
-            if prev_md and not re.search(r"[.?!:\")*]\s*$", prev_md) and not md.startswith("#"):
+            if prev_md and not re.search(r"[.?!:\")*]\s*$", prev_md) and not md.startswith(("#", "|", "![")):
                 md = "+\n" + md
             prev_md = md
             with open(os.path.join(a.out_dir, f"{i:03d}.md"), "w", encoding="utf-8") as f:
                 f.write(md)
+        print(f"tables: {n_tab}, figures: {n_fig} (PNG in {img_dir})")
         print(f"wrote {n} page files to {a.out_dir}; spot-check one page's word order")
 
 
