@@ -8,7 +8,7 @@
 #       Scan      -> render, rotate upright, split/deskew, OCR, review queue.
 #                    Next: helper agent writes BOOK/03_queue/fixes.txt (prompt in
 #                    docs/low-token-workflow.md), then structure, then finish.
-#   convert.sh finish BOOK_DIR "TITLE" "AUTHOR" OUT_NAME [--first-page N] [--upload]
+#   convert.sh finish BOOK_DIR "TITLE" "AUTHOR" OUT_NAME [--first-page N] [--lang en] [--upload]
 #       Applies fixes (if 03_queue exists and 04_text_fixed doesn't), builds the
 #       EPUB, runs epubcheck, picks 2 sample pages, uploads with --upload.
 #
@@ -59,9 +59,9 @@ start() {
 }
 
 finish() {
-  local book="$1" title="$2" author="$3" name="$4" upload="" first=1; shift 4
+  local book="$1" title="$2" author="$3" name="$4" upload="" first=1 lang=he; shift 4
   while [ $# -gt 0 ]; do
-    case "$1" in --upload) upload=1 ;; --first-page) first="$2"; shift ;; esac; shift
+    case "$1" in --upload) upload=1 ;; --first-page) first="$2"; shift ;; --lang) lang="$2"; shift ;; esac; shift
   done
   if [ -d "$book/03_queue" ] && [ ! -d "$book/04_text_fixed" ]; then
     touch "$book/03_queue/fixes.txt"
@@ -69,9 +69,12 @@ finish() {
   fi
   mkdir -p "$book/05_book_md" "$book/fonts"
   # JSON is valid YAML and quotes titles like פרק י"ג safely
-  python3 -c 'import json,sys; m={"title":sys.argv[1],"lang":"he"}; sys.argv[2] and m.update(author=sys.argv[2]); print(json.dumps(m,ensure_ascii=False))' \
-    "$title" "$author" > "$book/05_book_md/meta.yaml"
+  python3 -c 'import json,sys; m={"title":sys.argv[1],"lang":sys.argv[3]}; sys.argv[2] and m.update(author=sys.argv[2]); print(json.dumps(m,ensure_ascii=False))' \
+    "$title" "$author" "$lang" > "$book/05_book_md/meta.yaml"
   cp -n "$TOOLS"/fonts/*.ttf "$book/fonts/" 2>/dev/null || true
+  if [ "$lang" = en ]; then
+    python3 "$here/check_en.py" "$book/04_text_fixed" | tail -15   # OCR slips: "ina", "|" for "I"
+  fi
   "$here/build_epub.sh" "$book" "$name" "$first" 2>"$book/build.log" | tail -1 || { tail -5 "$book/build.log"; exit 1; }
   local tmp; tmp=$(mktemp -d); cp "$book/06_epub/$name.epub" "$tmp/book.epub"
   java -jar /usr/bin/epubcheck "$tmp/book.epub" 2>&1 | grep -E "^(ERROR|FATAL)|Messages:" | head -5

@@ -31,7 +31,7 @@ if [ ${#need[@]} -gt 0 ]; then
   fi
   $SUDO apt-get update -qq
   DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y -qq \
-    tesseract-ocr tesseract-ocr-heb tesseract-ocr-eng hunspell hunspell-he \
+    tesseract-ocr tesseract-ocr-heb tesseract-ocr-eng hunspell hunspell-he hunspell-en-us \
     epubcheck pandoc poppler-utils imagemagick default-jre-headless curl >/dev/null
 fi
 

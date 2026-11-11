@@ -39,8 +39,11 @@ scripts inside a conversion thread; note the problem and fix it separately.
    structure from the PDF itself: paragraph breaks from line gaps and short
    lines, `#`/`##`/`###` from type size, `**bold**` from bold fonts (word by
    word), `+` when a page starts mid-paragraph, and Latin/number runs put back
-   in logical order (`(diversity)`, `ב־184`, `(עזר, 2004)`). Table cells come out
-   joined with ` | ` on one line: grep for `|` and fix those by hand.
+   in logical order (`(diversity)`, `ב־184`, `(עזר, 2004)`). Running headers and page
+   numbers are dropped (the script prints which lines), ruled tables become pipe
+   tables, and charts/images are rendered to `BOOK/img/` and referenced as
+   `![caption](img/...)`. English book: `finish ... --lang en` (LTR build + `check_en.py`).
+   Never OCR a PDF that has a text layer.
 1. **Setup** (once per container, ~20 s): `scripts/setup_env.sh`.
    It can also be pasted into the cloud environment's setup script.
 2. **Prep**: rotate to upright (`tesseract --psm 0`), then

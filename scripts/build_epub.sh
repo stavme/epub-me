@@ -10,12 +10,17 @@ book="$1"; name="$2"; first="$3"; shift 3
 cd "$book"
 mkdir -p 05_book_md 06_epub
 python3 "$here/assemble_book.py" 04_text_fixed 05_book_md/book.md --first-page "$first" --page-markers "$@"
-fonts=()
-for f in fonts/*.ttf; do [ -e "$f" ] && fonts+=(--epub-embed-font="$f"); done
+lang=$(python3 -c 'import json;print(json.load(open("05_book_md/meta.yaml")).get("lang","he"))')
+fonts=(); css=(--css "$here/epub.css")
+if [ "$lang" = he ]; then
+  for f in fonts/*.ttf; do [ -e "$f" ] && fonts+=(--epub-embed-font="$f"); done
+else  # LTR book: no Hebrew font, left-aligned (epub-ltr.css overrides epub.css)
+  css+=(--css "$here/epub-ltr.css")
+fi
 pandoc 05_book_md/book.md -f markdown-smart -t epub3 \
   --metadata-file=05_book_md/meta.yaml \
-  --css "$here/epub.css" "${fonts[@]}" \
+  "${css[@]}" "${fonts[@]}" \
   --split-level=2 --toc --toc-depth=3 --resource-path=. \
   -o "06_epub/$name.epub"
-python3 "$here/fix_epub_rtl.py" "06_epub/$name.epub"
+[ "$lang" = he ] && python3 "$here/fix_epub_rtl.py" "06_epub/$name.epub" || true
 echo "built 06_epub/$name.epub"
