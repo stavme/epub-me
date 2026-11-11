@@ -1,5 +1,4 @@
 /* Loaded after epub.css for left-to-right (English) books. */
 body { font-family: serif; text-align: left; }
-ol, ul, li, .box, table, aside, blockquote { direction: ltr; unicode-bidi: normal; }
 p { text-align: left; }
 figcaption { text-align: left; }
