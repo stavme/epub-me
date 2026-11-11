@@ -27,6 +27,5 @@ th { text-align: center; }
 caption { font-size: 0.9em; caption-side: top; margin-bottom: 0.3em; }
 /* Lists, boxes and tables: set direction explicitly (readers differ in what they inherit),
    so list numbers sit on the right with the dot after the number, inside grey boxes too. */
-ol, ul, li, .box, table, aside, blockquote { direction: rtl; unicode-bidi: isolate; }
 ol, ul { list-style-position: outside; }
 li { text-align: start; }
