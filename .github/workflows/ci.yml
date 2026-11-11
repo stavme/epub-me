@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compile scripts
+        run: |
+          python3 -m py_compile scripts/*.py
+          for f in scripts/*.sh; do bash -n "$f"; done
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Install pandoc and epubcheck
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends pandoc epubcheck
+
+      - name: Build sample EPUB and run epubcheck
+        run: |
+          work="$RUNNER_TEMP/sample"
+          cp -r tests/fixtures/sample "$work"
+          # epub.css links the David Libre font, so embed it as real builds do
+          mkdir -p "$work/fonts"
+          for f in DavidLibre-Regular DavidLibre-Bold; do
+            curl -sSfL --retry 3 -o "$work/fonts/$f.ttf" \
+              "https://raw.githubusercontent.com/google/fonts/main/ofl/davidlibre/$f.ttf"
+          done
+          bash scripts/build_epub.sh "$work" sample 1
+          epubcheck "$work/06_epub/sample.epub"
