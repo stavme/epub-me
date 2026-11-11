@@ -16,7 +16,7 @@ else from disk, and page images never enter the main conversation.
 ```
 scripts/convert.sh start  SOURCE BOOK          # PDF, photo folder, or "dropbox"
 # scans only: helper agent (Sonnet) writes BOOK/03_queue/fixes.txt
-# structure pass on BOOK/04_text_fixed (Edit small spots, text only)
+# structure pass on BOOK/04_text_fixed (step 6; subagents for long chapters)
 scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME [--first-page N] [--upload]
 ```
 
@@ -58,8 +58,10 @@ scripts inside a conversion thread; note the problem and fix it separately.
    sees an image; it only gets back "N fixes, M guesses".
 5. **Apply**: `apply_fixes.py BOOK/03_queue BOOK/03_queue/fixes.txt BOOK/04_text_fixed`.
    `?` guesses land in `uncertain.txt` for the reader.
-6. **Structure** (text only, no images): headings, footnotes `[^*]`, page
-   continuation `+`, emphasis. Edit the small spots with Edit; never retype a page.
+6. **Structure**: headings, boxes, footnotes `[^*]`, page continuation `+`,
+   emphasis, tables, figures. A few pages: do it yourself with Edit on the
+   small spots, text only. More than ~10 pages: one Sonnet subagent per 12
+   pages with the structure-agent prompt below. Never retype a page.
 7. **Sample check**: `sample_check.py BOOK/02_pages BOOK/04_text_fixed BOOK/03_queue BOOK/sample --n 2`
    and look at only those two 700 px scans against their text.
 8. **Build and deliver**: `build_epub.sh`, epubcheck, `make_compare.py` (for
@@ -76,6 +78,53 @@ scripts inside a conversion thread; note the problem and fix it separately.
 > `n text` (exact print, maqaf ־, dash —), `n -` (junk), `n ?reconstruction`
 > (cut or illegible; reconstruct from context). Skip correct items; ASCII "-"
 > vs maqaf needs no line. Reply only with the number of lines and of '?' lines.
+
+## Structure-agent prompt (fill in BOOK, the page range, and the book description)
+
+Each rule says when it applies. A rule whose condition doesn't hold on a page
+is skipped, and a case that fits no rule goes to the doubts list, not to a guess.
+
+> You are adding structure to Hebrew page files of a scanned book. Work only on
+> BOOK/04_text_fixed/NNN.md for pages FROM-TO; the scan of each is
+> BOOK/02_pages/NNN.png (view each once). The page-file format is the docstring
+> of scripts/assemble_book.py. Change only the spots below with Edit; the
+> wording is already proofread, so never retype a page.
+>
+> - **Headings**: `#`..`####`. With numbered sections (1.2.3), the level is the
+>   depth of the number; otherwise use type size relative to the other headings.
+>   A level you guessed goes to the doubts list.
+> - **Footnotes**: a note marked `*` (margin or foot of page) becomes
+>   `[^*]` + `[^*]:`. A digit or letter marker whose note text is not on these
+>   pages (an endnote outside the excerpt) is deleted. Digit or letter notes
+>   whose text *is* on the page are kept as `[^*]` too.
+> - **Letter-spaced words** (ר ו ו ח between letters) become `**bold**` when
+>   letter-spacing is the book's emphasis style: the spaced word sits inside
+>   normally set running text. Spacing that only fills a justified short line,
+>   or the design of a heading or title, stays as normal text.
+> - **Boxes**: a framed or shaded box is `::: box` ... `:::`, placed where it
+>   sits in the reading order. When a box runs onto the next page, open the
+>   part on the next page with `::: +` (first line `+` if a paragraph is cut
+>   mid-sentence). Numbered lists inside boxes are plain `1. ` lines; the build
+>   sets RTL.
+> - **Tables**: a ruled grid in the scan becomes a pipe table with `: caption`.
+>   Text set in columns without a grid stays paragraphs.
+> - **Figures**: photos, cartoons and charts are cropped from the original
+>   color render BOOK/00_src (not 02_pages) into BOOK/img/pNNN-K.png and written
+>   as `![printed caption](img/pNNN-K.png)`. A paragraph the figure interrupts
+>   continues after it with a `+` line.
+> - **Running headers and page numbers** that survived OCR: delete a line that
+>   repeats the book or chapter title at the top or bottom edge of many pages.
+>   A real heading that happens to sit at the top of a page stays.
+> - **Latin citations** printed reversed inside Hebrew text
+>   (`(Richmond, 2005 ;2001`) are put in logical order. Hebrew is untouched.
+> - **English text only**: a lone `|` where the language has no use for one
+>   (running prose, not a table, formula or code) is `I`; glued words like
+>   `ina`/`ofthe` are split. `finish --lang en` lists them via check_en.py.
+>
+> Done when every page in the range has been opened next to its scan and every
+> box, heading, note, table and figure on the scan is in the file. Reply with
+> one line of counts (headings, boxes, notes, tables, figures) and a list of
+> doubts as `NNN: what and why`.
 
 ## Measured on Hobbes ch. 13 (7 pages, 1,480 words), 2026-11-06
 
