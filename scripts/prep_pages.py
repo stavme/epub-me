@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Stage 1 page prep: split spreads (right page first), deskew, crop, clean.
+"""Stage 1 page prep: split spreads (right page first; left first with --ltr), deskew, crop, clean.
 
 Input: a directory of upright page images (already rotated to reading orientation).
 Output: 02_pages/NNN.png (grayscale, for review/comparison),
         02_pages_ocr/NNN.png (background-normalized, for OCR),
         pages.json manifest.
 
-Usage: prep_pages.py IN_DIR OUT_ROOT [--spread-ratio 1.2]
+Usage: prep_pages.py IN_DIR OUT_ROOT [--spread-ratio 1.2] [--ltr] [--gutter FILE=X ...]
 """
 import argparse
 import json
@@ -33,6 +33,13 @@ def find_gutter(gray):
     prof = np.convolve(prof, np.ones(k) / k, mode="same")
     lo, hi = int(w * 0.40), int(w * 0.60)
     return lo + int(np.argmin(prof[lo:hi]))
+
+
+def spread_halves(gray, g, ltr=False):
+    """The two pages of a spread split at column g, in reading order:
+    Hebrew reads the right page first, an English book the left one."""
+    halves = [("right", gray[:, g:]), ("left", gray[:, :g])]
+    return halves[::-1] if ltr else halves
 
 
 def skew_angle(gray, max_deg=6.0, step=0.1):
@@ -95,6 +102,7 @@ def main():
     ap.add_argument("in_dir")
     ap.add_argument("out_root")
     ap.add_argument("--spread-ratio", type=float, default=1.2)
+    ap.add_argument("--ltr", action="store_true", help="left-to-right book: left page of a spread first")
     ap.add_argument("--gutter", nargs="*", default=[], metavar="FILE=X",
                     help="override the split column for a spread, e.g. 3.jpg=987")
     args = ap.parse_args()
@@ -119,8 +127,7 @@ def main():
             if name not in gut_over and abs(g - w / 2) > 0.06 * w:
                 print(f"WARNING {name}: gutter at {g}/{w} is far from the middle; check a "
                       f"500px thumbnail and rerun with --gutter {name}=X", file=sys.stderr)
-            # Hebrew: right half is read first
-            halves = [("right", gray[:, g:]), ("left", gray[:, :g])]
+            halves = spread_halves(gray, g, args.ltr)
             gutter = g
         else:
             halves = [("single", gray)]

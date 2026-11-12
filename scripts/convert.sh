@@ -2,8 +2,10 @@
 # One command per phase, so a conversion thread spends few steps (every step
 # re-reads the whole conversation, which is where most tokens go).
 #
-#   convert.sh start  SOURCE BOOK_DIR [--gutter FILE=X ...]
-#       SOURCE: a PDF, a folder of photos/scans, or "dropbox" (Apps/EpubMe/inbox).
+#   convert.sh start  SOURCE BOOK_DIR [--lang en] [--gutter FILE=X ...]
+#       SOURCE: a PDF, a folder of photos/scans, "dropbox:FILE NAME" (that file
+#       from Apps/EpubMe/inbox), or "dropbox" (only when the inbox has one file).
+#       --lang en: English scan (eng OCR, left-to-right word and page order).
 #       Text PDF  -> BOOK/04_text_fixed/NNN.md written; next: structure, then finish.
 #       Scan      -> render, rotate upright, split/deskew, OCR, review queue.
 #                    Next: helper agent writes BOOK/03_queue/fixes.txt (prompt in
@@ -20,16 +22,24 @@ TOOLS=${EPUB_TOOLS:-$HOME/.epub-tools}
 cmd=${1:-}; shift || true
 
 start() {
-  local src="$1" book="$2"; shift 2
+  local src="$1" book="$2" lang=he; shift 2
+  local prep=()
+  while [ $# -gt 0 ]; do
+    case "$1" in --lang) lang="$2"; shift ;; *) prep+=("$1") ;; esac; shift
+  done
+  local tlang=heb; [ "$lang" = en ] && tlang=eng
   "$here/setup_env.sh" >/dev/null
   mkdir -p "$book"
-  if [ "$src" = dropbox ]; then
-    python3 "$here/dropbox_fetch.py" "$book/00_inbox"
-    src=$(find "$book/00_inbox" -maxdepth 1 -type f | head -1)
-    [ -n "$src" ] || { echo "inbox is empty"; exit 1; }
-    [ "$(find "$book/00_inbox" -maxdepth 1 -type f | wc -l)" -gt 1 ] &&
-      echo "note: several inbox files; using $(basename "$src")"
-  fi
+  case "$src" in
+    dropbox|dropbox:*)
+      rm -rf "$book/00_inbox"
+      if [ "$src" = dropbox ]; then
+        python3 "$here/dropbox_fetch.py" "$book/00_inbox"
+      else
+        python3 "$here/dropbox_fetch.py" "$book/00_inbox" --name "${src#dropbox:}"
+      fi
+      src=$(find "$book/00_inbox" -maxdepth 1 -type f | head -1) ;;
+  esac
   local srcdir="$book/00_src"
   rm -rf "$srcdir"; mkdir -p "$srcdir"
   if [ -f "$src" ]; then
@@ -53,10 +63,12 @@ start() {
     r=$(tesseract "$f" - --psm 0 2>/dev/null | awk '/^Rotate:/{print $2}')
     convert "$f" -rotate "${r:-0}" "$up/$(basename "${f%.*}").png"
   done
-  python3 "$here/prep_pages.py" "$up" "$book" "$@" 2>&1 | grep -E "WARNING" || true
-  python3 "$here/review_queue.py" "$book/02_pages_ocr" "$book/03_queue" --tessdata "$TOOLS/tessdata" | tail -1
+  local ltr=(); [ "$lang" = en ] && ltr=(--ltr)
+  python3 "$here/prep_pages.py" "$up" "$book" "${ltr[@]}" "${prep[@]}" 2>&1 | grep -E "WARNING" || true
+  python3 "$here/review_queue.py" "$book/02_pages_ocr" "$book/03_queue" --tessdata "$TOOLS/tessdata" \
+    --lang "$tlang" | tail -1
   echo "pages: $(ls "$book/02_pages" | wc -l); sheets: $(ls "$book/03_queue/sheets" | wc -l)"
-  echo "NEXT: helper agent -> $book/03_queue/fixes.txt, then structure pass, then: convert.sh finish"
+  echo "NEXT: helper agent -> $book/03_queue/fixes.txt, then structure pass, then: convert.sh finish${ltr:+ ... --lang en}"
 }
 
 finish() {

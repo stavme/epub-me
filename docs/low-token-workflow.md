@@ -14,11 +14,16 @@ else from disk, and page images never enter the main conversation.
 ## Short version: two commands
 
 ```
-scripts/convert.sh start  SOURCE BOOK          # PDF, photo folder, or "dropbox"
+scripts/convert.sh start  SOURCE BOOK [--lang en]   # PDF, photo folder, or "dropbox:FILE NAME"
 # scans only: helper agent (Sonnet) writes BOOK/03_queue/fixes.txt
 # structure pass on BOOK/04_text_fixed (step 6; subagents for long chapters)
-scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME [--first-page N] [--upload]
+scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME [--first-page N] [--lang en] [--upload]
 ```
+
+English book (scan or text PDF): pass `--lang en` to both commands. With
+several files in the Dropbox inbox, name the file: `start "dropbox:Adobe Scan
+8 Nov 2026.pdf" BOOK`; plain `dropbox` is refused unless the inbox holds one
+file, because it would fetch (and move to `/inbox/done`) every file.
 
 Every tool call re-reads the whole conversation (over 95% of a thread's
 tokens on 2026-11-06), so a conversion thread should be a handful of calls:
@@ -29,7 +34,8 @@ scripts inside a conversion thread; note the problem and fix it separately.
 
 - **Intake**: don't attach scans to the conversation (an attachment is read
   into context). Drop them in Dropbox `Apps/EpubMe/inbox` and run
-  `dropbox_fetch.py BOOK/00_src`; files move to `/inbox/done` afterwards.
+  `dropbox_fetch.py BOOK/00_src --name FILE`; the file moves to `/inbox/done`
+  afterwards. `dropbox_fetch.py --list` (or `--keep`) to only look.
 0. **Text or scan?** `check_pdf.py FILE.pdf BOOK/04_text_fixed`. If the PDF
    already has a text layer (born-digital), it writes the page files directly
    and steps 2-5 and 7 are skipped: go to structure (6) and build (8) after a
@@ -69,7 +75,8 @@ scripts inside a conversion thread; note the problem and fix it separately.
 
 ## Helper-agent prompt (fill in the paths and book description)
 
-> You are proofreading Hebrew OCR. Work only with the files named here.
+> You are proofreading Hebrew OCR (for an English book: English OCR; skip the
+> maqaf rule). Work only with the files named here.
 > queue.txt is tab-separated: n, page, primary (OCR), alt (second model), conf,
 > why, context ([*] marks the item). why=missing: only the second model saw it;
 > why=uncovered: ink no model read. sheets/sNN.png show n on the left and the
