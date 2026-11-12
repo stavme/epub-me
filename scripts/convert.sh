@@ -11,6 +11,7 @@
 #   convert.sh finish BOOK_DIR "TITLE" "AUTHOR" OUT_NAME [--first-page N] [--lang en] [--upload]
 #       Applies fixes (if 03_queue exists and 04_text_fixed doesn't), builds the
 #       EPUB, runs epubcheck, picks 2 sample pages, uploads with --upload.
+#       Without --first-page, a scan's printed page numbers set it (guess_first_page.py).
 #
 # Prints only short summaries, so its output is cheap to read.
 set -euo pipefail
@@ -59,10 +60,18 @@ start() {
 }
 
 finish() {
-  local book="$1" title="$2" author="$3" name="$4" upload="" first=1 lang=he; shift 4
+  local book="$1" title="$2" author="$3" name="$4" upload="" first="" lang=he; shift 4
   while [ $# -gt 0 ]; do
     case "$1" in --upload) upload=1 ;; --first-page) first="$2"; shift ;; --lang) lang="$2"; shift ;; esac; shift
   done
+  if [ -z "$first" ]; then
+    # scans: printed page numbers that review_queue dropped give the offset
+    if [ -f "$book/03_queue/headers.txt" ] && first=$(python3 "$here/guess_first_page.py" "$book/03_queue/headers.txt"); then
+      echo "first page: $first (from page numbers in headers.txt; pass --first-page to override)"
+    else
+      first=1; echo "first page: 1 (no --first-page and no page numbers found)"
+    fi
+  fi
   if [ -d "$book/03_queue" ] && [ ! -d "$book/04_text_fixed" ]; then
     touch "$book/03_queue/fixes.txt"
     python3 "$here/apply_fixes.py" "$book/03_queue" "$book/03_queue/fixes.txt" "$book/04_text_fixed"

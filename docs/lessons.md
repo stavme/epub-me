@@ -48,7 +48,7 @@ Textbook layout: margin notes, framed boxes, tables, photos, cartoons, charts, l
 - `check_vs_ocr.py` lists corrected words that are not within one edit of any OCR word on that page: a fast typo queue. Boxes moved from the next page show up as expected noise.
 
 ### Structure (page-file additions)
-- `::: box` ... `:::` for framed boxes; a box that runs across pages is written whole on the page where it starts.
+- `::: box` ... `:::` for framed boxes; a box that runs across pages continues on the next page with `::: +` (assemble_book merges the parts; Schiff ch. 2 had them split into two boxes each).
 - Margin notes with `*` become footnotes; caption-only margin text becomes the image caption.
 - `![caption](img/NAME.jpg)` for figures; a later block that starts with `+` continues the last paragraph when a figure interrupts it.
 - Pipe tables with `: caption`; list cells use `• item<br>` (assemble_book turns `<br>` into XHTML `<br />`, otherwise epubcheck fails).

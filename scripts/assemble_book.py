@@ -19,6 +19,9 @@ Page-file conventions (04_text_fixed/NNN.md):
     footnote refs), pipe tables ("| ..."), table captions (": ..."),
     list blocks ("1. ..." on every line) and images ("![caption](img/x.jpg)").
     A page marker before a raw block becomes its own tiny paragraph.
+  - A box that runs across pages: the part on the next page opens with
+    "::: +" instead of "::: box" and is merged into the previous box. If its
+    first line is "+", the box's last paragraph continues (no paragraph break).
 
 Usage: assemble_book.py TEXT_DIR OUT_MD --first-page 23 [--page-markers]
 """
@@ -116,6 +119,28 @@ def inline(s):
     return re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", em, s)
 
 
+def box_index(paras):
+    for j in range(len(paras) - 1, -1, -1):
+        if paras[j].startswith("\x00:::"):
+            return j
+    raise SystemExit('"::: +" with no box before it')
+
+
+def merge_box(box, cont, marks):
+    """Append the inside of continuation div CONT to raw div BOX (both "\x00:::...")."""
+    head = box.rstrip("\n").split("\n")[:-1]          # drop the closing :::
+    body = cont.rstrip("\n").split("\n")[1:-1]        # drop "::: +" and ":::"
+    joined = bool(body) and body[0].strip() == "+"
+    if joined:
+        body = body[1:]
+        if marks and body:
+            body[0] = marks + body[0]
+    else:
+        body = ([marks, ""] if marks else []) + body
+        head.append("")
+    return "\n".join(head + body + [":::"])
+
+
 def marker(n):
     return f'<span epub:type="pagebreak" role="doc-pagebreak" id="page-{n}" aria-label="{n}"></span>'
 
@@ -158,7 +183,9 @@ def main():
             p = renum_refs(p)
             marks = "".join(pending_marks)
             pending_marks = []
-            if p.startswith("\x01"):
+            if p.startswith("\x00::: +"):
+                paras[box_index(paras)] = merge_box(paras[box_index(paras)], p, marks)
+            elif p.startswith("\x01"):
                 j = max(k for k, q in enumerate(paras) if not q.startswith("\x00"))
                 paras[j] = paras[j] + " " + marks + p[1:]
             elif p.startswith("\x00"):
