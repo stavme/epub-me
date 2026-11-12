@@ -23,8 +23,13 @@ Output in OUT_DIR:
   headers.txt    running headers / page numbers that were left out of the drafts
   stats.txt      words and queued words per page
 
+With --lang eng (English scans) words, lines, columns and sheet crops run
+left to right, the dictionary pass uses en_US, and "letters" means Latin
+letters. If tessdata_best has no model for the language, both readings come
+from the distro model and only low-confidence and dictionary words are queued.
+
 Usage: review_queue.py IN_DIR OUT_DIR --tessdata DIR [--low 75] [--scale auto]
-       [--per-sheet 40] [--lang heb]
+       [--per-sheet 40] [--lang heb|eng]
 """
 import argparse
 import csv
@@ -40,6 +45,22 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ocr_regions import layout_blocks, merge, normalize, reading_order, skew_angle  # noqa: E402
 
 GLUED = re.compile(r"[א-ת][0-9A-Za-z*+]|[0-9A-Za-z*+][א-ת]")
+
+# Set by set_lang(): reading direction and what counts as a letter.
+RTL = True
+LETTER = "א-ת"
+DICT = "he_IL"
+
+
+def set_lang(lang):
+    global RTL, LETTER, DICT
+    RTL = lang.startswith("heb")
+    LETTER, DICT = ("א-ת", "he_IL") if RTL else ("A-Za-z", "en_US")
+
+
+def word_order(w):
+    """Sort key for words on a line, in reading order."""
+    return -w["box"][2] if RTL else w["box"][0]
 
 
 def tsv_words(path, tessdata, lang, psm=6):
@@ -104,7 +125,7 @@ def uncovered(img, boxes, min_h):
 
 
 def letters(w):
-    return re.sub(r"[^א-ת]", "", w)
+    return re.sub(f"[^{LETTER}]", "", w)
 
 
 def norm_word(w):
@@ -117,7 +138,7 @@ def lines_of(words):
         lines.setdefault(w["line"], []).append(w)
     out = []
     for ws in lines.values():
-        ws.sort(key=lambda w: -w["box"][2])  # RTL: rightmost word first
+        ws.sort(key=word_order)
         box = (min(w["box"][0] for w in ws), min(w["box"][1] for w in ws),
                max(w["box"][2] for w in ws), max(w["box"][3] for w in ws))
         out.append({"words": ws, "box": box})
@@ -126,19 +147,25 @@ def lines_of(words):
 
 
 def paragraphs(lines, block_w):
-    """Join lines; a short last line (left end far from the block's left edge) ends a paragraph."""
+    """Join lines. An indented first line starts a paragraph; a short last line
+    ends one. Hebrew lines start at the right edge, English ones at the left."""
     if not lines:
         return []
     left = min(l["box"][0] for l in lines)
     right = max(l["box"][2] for l in lines)
     paras, cur = [], []
     for i, l in enumerate(lines):
-        indented = l["box"][2] < right - 0.04 * block_w
+        if RTL:
+            indented = l["box"][2] < right - 0.04 * block_w
+            short = l["box"][0] > left + 0.12 * block_w
+        else:
+            indented = l["box"][0] > left + 0.04 * block_w
+            short = l["box"][2] < right - 0.12 * block_w
         if cur and indented:
             paras.append(cur)
             cur = []
         cur.append(l)
-        if l["box"][0] > left + 0.12 * block_w:
+        if short:
             paras.append(cur)
             cur = []
     if cur:
@@ -174,8 +201,13 @@ def make_sheets(items, out_dir, per_sheet, width=560, row_h=48):
         for i, (n, crop) in enumerate(chunk):
             y = i * row_h
             d.text((4, y + 10), str(n), fill=(0, 0, 160), font=font)
-            c = crop if crop.width <= width - 60 else crop.crop((crop.width - (width - 60), 0, crop.width, crop.height))
-            sheet.paste(c, (width - c.width - 2, y + 2))  # right-aligned, like the text
+            room = width - 60
+            if RTL:  # right-aligned, like the text
+                c = crop if crop.width <= room else crop.crop((crop.width - room, 0, crop.width, crop.height))
+                sheet.paste(c, (width - c.width - 2, y + 2))
+            else:
+                c = crop if crop.width <= room else crop.crop((0, 0, room, crop.height))
+                sheet.paste(c, (58, y + 2))
             d.line((0, y + row_h - 1, width, y + row_h - 1), fill=(200, 200, 200))
         p = os.path.join(out_dir, f"s{s // per_sheet + 1:02d}.png")
         sheet.save(p, optimize=True)
@@ -196,6 +228,11 @@ def main():
     ap.add_argument("--per-sheet", type=int, default=40)
     ap.add_argument("--only", nargs="*")
     args = ap.parse_args()
+    set_lang(args.lang)
+    best_dir = args.tessdata
+    if not os.path.exists(os.path.join(best_dir, args.lang.split("+")[0] + ".traineddata")):
+        print(f"note: no tessdata_best {args.lang} in {best_dir}; using the distro model only", flush=True)
+        best_dir = None
     for sub in ("draft", "blocks", "sheets"):  # a rerun must not mix with old output
         d = os.path.join(args.out_dir, sub)
         if os.path.isdir(d):
@@ -214,7 +251,7 @@ def main():
             page = page.resize((int(page.width * scale), int(page.height * scale)), Image.LANCZOS)
         pp = os.path.join(args.out_dir, "blocks", f"{stem}_page.png")
         page.save(pp)
-        found = merge(layout_blocks(pp, args.tessdata, args.lang))
+        found = merge(layout_blocks(pp, best_dir, args.lang))
         # ink the layout pass skipped (whole lines can go missing): add it as extra blocks
         extra = []
         for ub in uncovered(page, found, int(8 * scale)):
@@ -223,7 +260,7 @@ def main():
                 extra[-1] = (min(e[0], ub[0]), e[1], max(e[2], ub[2]), ub[3])
             else:
                 extra.append(ub)
-        boxes = reading_order(merge(found + extra), page.width)
+        boxes = reading_order(merge(found + extra), page.width, rtl=RTL)
         os.remove(pp)
         page_paras, n_words = [], 0
         for bi, (x0, y0, x1, y1) in enumerate(boxes):
@@ -236,7 +273,7 @@ def main():
                 blk = blk.rotate(a, resample=Image.BICUBIC, expand=True, fillcolor=255)
             bp = os.path.join(args.out_dir, "blocks", f"{stem}_b{bi}.png")
             blk.save(bp)
-            best = tsv_words(bp, args.tessdata, args.lang)
+            best = tsv_words(bp, best_dir, args.lang)
             fast = tsv_words(bp, None, args.lang)
             used = set()
             for w in best:
@@ -246,7 +283,7 @@ def main():
                 if hits:
                     idx = [i for _, i in sorted(hits, reverse=True)]
                     used.update(idx)
-                    alt_words = sorted((fast[i] for i in idx), key=lambda f: -f["box"][2])
+                    alt_words = sorted((fast[i] for i in idx), key=word_order)
                     alt = " ".join(f["text"] for f in alt_words)
                     if norm_word(alt) != norm_word(w["text"]) and not (
                             letters(alt) == letters(w["text"]) and w["conf"] >= args.same_letters_conf):
@@ -274,7 +311,7 @@ def main():
                 if host and vov(host) > 0.5 * (f["box"][3] - f["box"][1]):
                     f["lbox"] = host["box"]
                     host["words"].append(f)
-                    host["words"].sort(key=lambda w: -w["box"][2])
+                    host["words"].sort(key=word_order)
                 else:
                     lines.append({"words": [f], "box": f["box"]})
             # ink inside the block that no model read
@@ -294,11 +331,13 @@ def main():
     counts = {}
     for w in allw:
         counts[norm_word(w["text"])] = counts.get(norm_word(w["text"]), 0) + 1
-    cand = sorted({re.sub(r"[^א-ת\"'־]", "", w["text"]) for w in allw if not w["why"]} - {""})
-    unknown = set(subprocess.run(["hunspell", "-i", "utf-8", "-d", "he_IL", "-l"], input="\n".join(cand),
+    def dword(t):
+        return re.sub(r"[^א-ת\"'־]", "", t) if RTL else re.sub(r"^[^A-Za-z]+|[^A-Za-z]+$", "", t)
+    cand = sorted({dword(w["text"]) for w in allw if not w["why"]} - {""})
+    unknown = set(subprocess.run(["hunspell", "-i", "utf-8", "-d", DICT, "-l"], input="\n".join(cand),
                                  capture_output=True, text=True).stdout.split()) if cand else set()
     for w in allw:
-        if not w["why"] and counts[norm_word(w["text"])] == 1 and re.sub(r"[^א-ת\"'־]", "", w["text"]) in unknown:
+        if not w["why"] and counts[norm_word(w["text"])] == 1 and dword(w["text"]) in unknown:
             w["why"] = ["dict"]
 
     # running headers / page numbers: short first or last paragraph with a number, or repeated on other pages

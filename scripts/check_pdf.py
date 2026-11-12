@@ -2,7 +2,10 @@
 """Step 0: decide whether a PDF needs OCR at all.
 
 Counts the Hebrew letters in each page's text layer (pdftotext). Pages with
-at least --min letters count as "text"; the rest are scans.
+at least --min letters count as "text"; the rest are scans. A page covered by
+one picture (>= 85% of its area) is a scan too, whatever its text layer says:
+scanner apps (Adobe Scan, CamScanner) add their own OCR layer, which is noisy
+and has no structure, and the page must go through our OCR instead.
 
   - All (or nearly all) pages are text: the PDF is born-digital. Skip prep,
     OCR, the queue and the helper agent: the text is written straight to
@@ -226,6 +229,33 @@ def geo_all(page):
     return out
 
 
+def image_coverage(pdf):
+    """Per page, the largest share of the page area one image covers (0..1).
+    Empty list when pdfplumber is missing."""
+    try:
+        import pdfplumber
+    except ImportError:
+        return []
+    out = []
+    with pdfplumber.open(pdf) as doc:
+        for pg in doc.pages:
+            area = float(pg.width * pg.height) or 1.0
+            best = 0.0
+            for im in pg.images:
+                w = min(im["x1"], pg.width) - max(im["x0"], 0)
+                h = min(im["bottom"], pg.height) - max(im["top"], 0)
+                best = max(best, max(0.0, w) * max(0.0, h) / area)
+            out.append(best)
+    return out
+
+
+def scan_pages(texts, coverage, min_letters, full=0.85):
+    """1-based numbers of the pages that need OCR: too few letters in the text
+    layer, or a full-page picture (a scanner app's OCR layer is not trusted)."""
+    return [i + 1 for i, t in enumerate(texts)
+            if len(HEB.findall(t)) < min_letters or (i < len(coverage) and coverage[i] >= full)]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
@@ -234,10 +264,11 @@ def main():
     a = ap.parse_args()
     n = page_count(a.pdf)
     texts = [page_text(a.pdf, i) for i in range(1, n + 1)]
-    scanned = [i + 1 for i, t in enumerate(texts) if len(HEB.findall(t)) < a.min]
+    scanned = scan_pages(texts, image_coverage(a.pdf), a.min)
     if len(scanned) > max(1, n // 10):  # a blank or picture page or two is fine
         kind = "scan" if len(scanned) == n else "mixed"
-        print(f"{kind}: {len(scanned)}/{n} pages have no text layer -> run the OCR pipeline"
+        print(f"{kind}: {len(scanned)}/{n} pages have no text layer or are one full-page picture"
+              " -> run the OCR pipeline"
               + (f" (scanned pages: {scanned})" if kind == "mixed" else ""))
         sys.exit(1)
     print(f"text: {n - len(scanned)}/{n} pages have a text layer -> skip OCR")
