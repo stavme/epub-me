@@ -12,9 +12,10 @@ mkdir -p 05_book_md 06_epub
 python3 "$here/assemble_book.py" 04_text_fixed 05_book_md/book.md --first-page "$first" --page-markers "$@"
 lang=$(python3 -c 'import json;print(json.load(open("05_book_md/meta.yaml")).get("lang","he"))')
 fonts=(); css=(--css "$here/epub.css")
-if [ "$lang" = he ]; then
-  for f in fonts/*.ttf; do [ -e "$f" ] && fonts+=(--epub-embed-font="$f"); done
-else  # LTR book: no Hebrew font, left-aligned (epub-ltr.css overrides epub.css)
+# epub.css links the fonts for every language, so embed them for LTR too
+# (otherwise epubcheck fails RSC-007).
+for f in fonts/*.ttf; do [ -e "$f" ] && fonts+=(--epub-embed-font="$f"); done
+if [ "$lang" != he ]; then  # LTR book: left-aligned (epub-ltr.css overrides epub.css)
   css+=(--css "$here/epub-ltr.css")
 fi
 pandoc 05_book_md/book.md -f markdown-smart -t epub3 \
