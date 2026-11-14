@@ -39,6 +39,10 @@ python3 -c "import cv2, numpy, PIL, pdfplumber" 2>/dev/null ||
   python3 -m pip install -q opencv-python-headless numpy pillow pdfplumber 2>/dev/null ||
   { echo "error: could not install cv2/numpy/Pillow/pdfplumber for $(command -v python3)" >&2; exit 1; }
 
+# flattens curved pages of English scans (dewarp_pages.py); optional
+command -v page-dewarp >/dev/null || python3 -m pip install -q page-dewarp >/dev/null 2>&1 ||
+  echo "warning: page-dewarp not installed; curved pages stay curved" >&2
+
 mkdir -p "$TOOLS/tessdata" "$TOOLS/fonts"
 if [ ! -f "$TOOLS/tessdata/heb.traineddata" ]; then
   curl -sSfL --connect-timeout 20 --max-time 300 --retry 3 -o "$TOOLS/tessdata/heb.traineddata" \

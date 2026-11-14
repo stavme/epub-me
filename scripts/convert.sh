@@ -5,7 +5,8 @@
 #   convert.sh start  SOURCE BOOK_DIR [--lang en] [--gutter FILE=X ...]
 #       SOURCE: a PDF, a folder of photos/scans, "dropbox:FILE NAME" (that file
 #       from Apps/EpubMe/inbox), or "dropbox" (only when the inbox has one file).
-#       --lang en: English scan (eng OCR, left-to-right word and page order).
+#       --lang en: English scan (eng OCR, left-to-right word and page order;
+#       curved pages flattened by dewarp_pages.py where that helps).
 #       Text PDF  -> BOOK/04_text_fixed/NNN.md written; next: structure, then finish.
 #       Scan      -> render, rotate upright, split/deskew, OCR, review queue.
 #                    Next: helper agent writes BOOK/03_queue/fixes.txt (prompt in
@@ -65,6 +66,8 @@ start() {
   done
   local ltr=(); [ "$lang" = en ] && ltr=(--ltr)
   python3 "$here/prep_pages.py" "$up" "$book" "${ltr[@]}" "${prep[@]}" 2>&1 | grep -E "WARNING" || true
+  # English: flatten curved pages where it lowers the unknown words (dewarp.txt)
+  [ "$lang" = en ] && { python3 "$here/dewarp_pages.py" "$book/02_pages_ocr" --lang eng 2>&1 | tail -1 || true; }
   python3 "$here/review_queue.py" "$book/02_pages_ocr" "$book/03_queue" --tessdata "$TOOLS/tessdata" \
     --lang "$tlang" | tail -1
   echo "pages: $(ls "$book/02_pages" | wc -l); sheets: $(ls "$book/03_queue/sheets" | wc -l)"
