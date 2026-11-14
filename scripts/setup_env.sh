@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time tool setup for a fresh cloud container (also usable as the
 # environment's setup script). Idempotent: safe to run again.
-# Installs: tesseract + heb (fast) + tessdata_best heb, hunspell-he, epubcheck,
+# Installs: tesseract + heb/eng (fast) + tessdata_best heb and eng, hunspell-he, epubcheck,
 # pandoc, poppler, imagemagick, and the David Libre font.
 # Tools land in standard paths; tessdata_best and the font go to $EPUB_TOOLS
 # (default ~/.epub-tools).
@@ -47,6 +47,11 @@ if [ ! -f "$TOOLS/tessdata/heb.traineddata" ]; then
   sys=$(dirname "$(find /usr/share -name eng.traineddata -path '*tessdata*' | head -1)")
   cp -r "$sys/configs" "$sys/tessconfigs" "$TOOLS/tessdata/"
 fi
+# English scans (convert.sh start --lang en); review_queue falls back to the distro model without it
+[ -f "$TOOLS/tessdata/eng.traineddata" ] ||
+  curl -sSfL --connect-timeout 20 --max-time 600 --retry 3 -o "$TOOLS/tessdata/eng.traineddata" \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/main/eng.traineddata ||
+  { rm -f "$TOOLS/tessdata/eng.traineddata"; echo "warning: tessdata_best eng not downloaded" >&2; }
 [ -f "$TOOLS/tessdata/configs/tsv" ] || { echo "error: tesseract configs missing in $TOOLS/tessdata" >&2; exit 1; }
 for f in DavidLibre-Regular DavidLibre-Bold; do
   [ -f "$TOOLS/fonts/$f.ttf" ] || curl -sSfL --connect-timeout 20 --max-time 120 --retry 3 -o "$TOOLS/fonts/$f.ttf" \

@@ -105,11 +105,12 @@ def merge(boxes, gap=40):
     return boxes
 
 
-def reading_order(boxes, width):
-    # RTL: wider/right blocks first within a band; simple: sort by column (right first) then top
+def reading_order(boxes, width, rtl=True):
+    """Sort blocks by column, then top. Hebrew (rtl): right column first;
+    English (rtl=False): left column first."""
     def key(b):
-        cx = (b[0] + b[2]) / 2
-        return (-round(cx / (width / 3)), b[1])
+        col = round((b[0] + b[2]) / 2 / (width / 3))
+        return (-col if rtl else col, b[1])
     return sorted(boxes, key=key)
 
 
@@ -131,7 +132,8 @@ def main():
         with tempfile.TemporaryDirectory() as td:
             pp = os.path.join(td, "p.png")
             norm.save(pp)
-            boxes = reading_order(merge(layout_blocks(pp, args.tessdata, args.lang)), norm.width)
+            boxes = reading_order(merge(layout_blocks(pp, args.tessdata, args.lang)), norm.width,
+                                  rtl=args.lang.startswith("heb"))
             parts, meta = [], []
             for i, (x0, y0, x1, y1) in enumerate(boxes):
                 if (x1 - x0) * (y1 - y0) < 4000:
