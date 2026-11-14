@@ -35,9 +35,9 @@ if [ ${#need[@]} -gt 0 ]; then
     epubcheck pandoc poppler-utils imagemagick default-jre-headless curl >/dev/null
 fi
 
-python3 -c "import cv2, numpy, PIL, pdfplumber" 2>/dev/null ||
-  python3 -m pip install -q opencv-python-headless numpy pillow pdfplumber 2>/dev/null ||
-  { echo "error: could not install cv2/numpy/Pillow/pdfplumber for $(command -v python3)" >&2; exit 1; }
+python3 -c "import cv2, numpy, PIL, pdfplumber, bs4, lxml" 2>/dev/null ||
+  python3 -m pip install -q opencv-python-headless numpy pillow pdfplumber beautifulsoup4 lxml 2>/dev/null ||
+  { echo "error: could not install cv2/numpy/Pillow/pdfplumber/bs4/lxml for $(command -v python3)" >&2; exit 1; }
 
 # flattens curved pages of English scans (dewarp_pages.py); optional
 command -v page-dewarp >/dev/null || python3 -m pip install -q page-dewarp >/dev/null 2>&1 ||

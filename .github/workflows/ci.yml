@@ -18,6 +18,9 @@ jobs:
           python3 -m py_compile scripts/*.py
           for f in scripts/*.sh; do bash -n "$f"; done
 
+      - name: Python deps for tests
+        run: python3 -m pip install -q beautifulsoup4 lxml
+
       - name: Unit tests
         run: python3 -m unittest discover -s tests -v
 
