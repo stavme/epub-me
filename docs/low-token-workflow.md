@@ -20,7 +20,9 @@ scripts/convert.sh start  SOURCE BOOK [--lang en]   # PDF, photo folder, or "dro
 scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME [--first-page N] [--lang en] [--upload]
 ```
 
-English book (scan or text PDF): pass `--lang en` to both commands. With
+English book (scan or text PDF): pass `--lang en` to both commands. For an
+English scan, start also flattens curved pages where that lowers the unknown
+words (`BOOK/dewarp.txt`). With
 several files in the Dropbox inbox, name the file: `start "dropbox:Adobe Scan
 8 Nov 2026.pdf" BOOK`; plain `dropbox` is refused unless the inbox holds one
 file, because it would fetch (and move to `/inbox/done`) every file.
