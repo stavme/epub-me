@@ -25,6 +25,40 @@ tokens on 2026-11-06), so a conversion thread should be a handful of calls:
 start, helper agent, a few structure edits, finish. Don't debug or extend the
 scripts inside a conversion thread; note the problem and fix it separately.
 
+## Never retype pages
+
+When it applies: every conversion, every language, scan or born-digital, in the
+main conversation and in every subagent. The only exception is changing the
+scripts themselves outside a conversion (see the override below).
+
+- Book text lives in the files the scripts write (`04_text_fixed/NNN.md`,
+  `03_queue/draft/`). Claude changes it only with small targeted edits:
+  - one spot: Edit with a short unique anchor (a few words around the spot);
+  - many spots, or the same slip on many pages:
+    a TSV for `scripts/replace_text.py BOOK/04_text_fixed FIXES.tsv`
+    (`PAGE<TAB>OLD<TAB>NEW`, `*` for every page, `\n` for a line break,
+    `--dry-run` to preview). It prints one short line per fix, never a page.
+  - a box: two short edits (`::: box` before its first line, `:::` after its
+    last), not one edit that holds the whole box.
+- Never print or retype a whole page: not in a reply, not in a Write, Edit,
+  heredoc or `python -c`, and don't `cat` pages to compare them; use the
+  scripts' short reports (`check_text.py`, `check_en.py`, `sample_check.py`).
+- Work a few pages at a time (up to ~12 per structure subagent).
+- Why: retyped pages are the most expensive tokens (output), and a 23-page
+  English scan failed twice with "Output blocked by content filtering policy"
+  after pages were retyped in model output.
+- If a page's OCR is too broken to fix with edits, rerun OCR on that page
+  (other `--psm`, other language, a crop) instead of typing it; if that fails,
+  list the page as a doubt for Stav.
+
+**Enforced** by a Claude Code PreToolUse hook (`.claude/settings.json` ->
+`scripts/guard_page_edits.py`). It checks only page files (NNN.md under
+`04_text_fixed/` or `text/`, and `05_book_md/`) and blocks: a Write over 400
+characters, an Edit whose old or new string is over 400 characters, and a Bash
+command over 1,500 characters that names a page location. Override for script
+work only: `EPUBME_ALLOW_PAGE_WRITES=1` (or `EPUBME_EDIT_LIMIT` /
+`EPUBME_BASH_LIMIT`). Tests: `tests/test_no_retype.py`.
+
 ## Steps
 
 - **Intake**: don't attach scans to the conversation (an attachment is read
@@ -61,7 +95,8 @@ scripts inside a conversion thread; note the problem and fix it separately.
 6. **Structure**: headings, boxes, footnotes `[^*]`, page continuation `+`,
    emphasis, tables, figures. A few pages: do it yourself with Edit on the
    small spots, text only. More than ~10 pages: one Sonnet subagent per 12
-   pages with the structure-agent prompt below. Never retype a page.
+   pages with the structure-agent prompt below. Never retype a page (see
+   "Never retype pages" above; the hook blocks it).
 7. **Sample check**: `sample_check.py BOOK/02_pages BOOK/04_text_fixed BOOK/03_queue BOOK/sample --n 2`
    and look at only those two 700 px scans against their text.
 8. **Build and deliver**: `build_epub.sh`, epubcheck, `make_compare.py` (for
@@ -88,7 +123,11 @@ is skipped, and a case that fits no rule goes to the doubts list, not to a guess
 > BOOK/04_text_fixed/NNN.md for pages FROM-TO; the scan of each is
 > BOOK/02_pages/NNN.png (view each once). The page-file format is the docstring
 > of scripts/assemble_book.py. Change only the spots below with Edit; the
-> wording is already proofread, so never retype a page.
+> wording is already proofread, so never retype a page: each Edit is a short
+> anchor (a few words), a box is two edits (opening and closing line), and a
+> slip repeated on many pages goes in a TSV for scripts/replace_text.py. Edits
+> over 400 characters to a page file are blocked by a hook. Never quote a whole
+> page in your reply.
 >
 > - **Headings**: `#`..`####`. With numbered sections (1.2.3), the level is the
 >   depth of the number; otherwise use type size relative to the other headings.
