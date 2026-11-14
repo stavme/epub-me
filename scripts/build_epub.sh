@@ -21,7 +21,7 @@ fi
 pandoc 05_book_md/book.md -f markdown-smart -t epub3 \
   --metadata-file=05_book_md/meta.yaml \
   "${css[@]}" "${fonts[@]}" \
-  --split-level=2 --toc --toc-depth=3 --resource-path=. \
+  --split-level=2 --toc --toc-depth=${TOC_DEPTH:-6} --resource-path=. \
   -o "06_epub/$name.epub"
 [ "$lang" = he ] && python3 "$here/fix_epub_rtl.py" "06_epub/$name.epub" || true
 echo "built 06_epub/$name.epub"
