@@ -20,6 +20,14 @@ scripts/convert.sh start  SOURCE BOOK [--lang en]   # PDF, photo folder, or "dro
 scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME [--first-page N] [--lang en] [--upload]
 ```
 
+Web article (open-access HTML page, e.g. Cambridge Core): `convert.sh start
+"https://..." BOOK --lang en`, then `finish BOOK TITLE AUTHOR NAME --lang en`
+(start prints TITLE and AUTHOR). No OCR and no structure pass: text, headings,
+figures (`BOOK/img/`) and numbered footnotes come from the page by
+`scripts/html_article.py`; glance at `04_text_fixed/001.md`. The sandbox's
+network policy must allow the article host and its image host (Cambridge:
+`www.cambridge.org`, `static.cambridge.org`).
+
 English book (scan or text PDF): pass `--lang en` to both commands. For an
 English scan, start also flattens curved pages where that lowers the unknown
 words (`BOOK/dewarp.txt`). With

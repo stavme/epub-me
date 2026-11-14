@@ -5,6 +5,8 @@
 #   convert.sh start  SOURCE BOOK_DIR [--lang en] [--gutter FILE=X ...]
 #       SOURCE: a PDF, a folder of photos/scans, "dropbox:FILE NAME" (that file
 #       from Apps/EpubMe/inbox), or "dropbox" (only when the inbox has one file).
+#       "https://..." : an open-access article page (HTML): text, figures and footnotes
+#       are taken from the page by html_article.py (no OCR); then structure check, finish.
 #       --lang en: English scan (eng OCR, left-to-right word and page order;
 #       curved pages flattened by dewarp_pages.py where that helps).
 #       Text PDF  -> BOOK/04_text_fixed/NNN.md written; next: structure, then finish.
@@ -31,6 +33,12 @@ start() {
   local tlang=heb; [ "$lang" = en ] && tlang=eng
   "$here/setup_env.sh" >/dev/null
   mkdir -p "$book"
+  case "$src" in
+    http://*|https://*)
+      python3 "$here/html_article.py" "$src" "$book"
+      echo "NEXT: glance at $book/04_text_fixed/001.md (headings, notes), then: convert.sh finish $book TITLE AUTHOR NAME --lang $lang"
+      return ;;
+  esac
   case "$src" in
     dropbox|dropbox:*)
       rm -rf "$book/00_inbox"
@@ -79,6 +87,10 @@ finish() {
   while [ $# -gt 0 ]; do
     case "$1" in --upload) upload=1 ;; --first-page) first="$2"; shift ;; --lang) lang="$2"; shift ;; esac; shift
   done
+  local extra=()
+  if [ -f "$book/source.url" ]; then  # web article: one page file, no page markers
+    first=1; extra=(--no-marker 001)
+  fi
   if [ -z "$first" ]; then
     # scans: printed page numbers that review_queue dropped give the offset
     if [ -f "$book/03_queue/headers.txt" ] && first=$(python3 "$here/guess_first_page.py" "$book/03_queue/headers.txt"); then
@@ -96,10 +108,10 @@ finish() {
   python3 -c 'import json,sys; m={"title":sys.argv[1],"lang":sys.argv[3]}; sys.argv[2] and m.update(author=sys.argv[2]); print(json.dumps(m,ensure_ascii=False))' \
     "$title" "$author" "$lang" > "$book/05_book_md/meta.yaml"
   cp -n "$TOOLS"/fonts/*.ttf "$book/fonts/" 2>/dev/null || true
-  if [ "$lang" = en ]; then
+  if [ "$lang" = en ] && [ ! -f "$book/source.url" ]; then  # not for web text: no OCR slips
     python3 "$here/check_en.py" "$book/04_text_fixed" | tail -15   # OCR slips: "ina", "|" for "I"
   fi
-  "$here/build_epub.sh" "$book" "$name" "$first" 2>"$book/build.log" | tail -1 || { tail -5 "$book/build.log"; exit 1; }
+  "$here/build_epub.sh" "$book" "$name" "$first" ${extra[@]+"${extra[@]}"} 2>"$book/build.log" | tail -1 || { tail -5 "$book/build.log"; exit 1; }
   local tmp; tmp=$(mktemp -d); cp "$book/06_epub/$name.epub" "$tmp/book.epub"
   java -jar /usr/bin/epubcheck "$tmp/book.epub" 2>&1 | grep -E "^(ERROR|FATAL)|Messages:" | head -5
   rm -rf "$tmp"
