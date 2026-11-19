@@ -41,3 +41,17 @@ jobs:
           done
           bash scripts/build_epub.sh "$work" sample 1
           epubcheck "$work/06_epub/sample.epub"
+
+      - name: Browser button (bookmarklet) in Chromium, epubcheck its output
+        env:
+          REQUIRE_BROWSER_TESTS: "1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && (cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null \
+            && npm install --no-audit --no-fund playwright@1.48.2 && npx playwright install --with-deps chromium)
+          export NODE_PATH="$RUNNER_TEMP/pw/node_modules"
+          python3 scripts/build_bookmarklet.py --check
+          python3 -m unittest tests.test_bookmarklet -v
+          for p in cambridge hebrew; do
+            node tests/bookmarklet_e2e.js "$p.html" "$RUNNER_TEMP/$p.epub"
+            epubcheck "$RUNNER_TEMP/$p.epub"
+          done
