@@ -8,6 +8,7 @@ Never prints the secrets.
 Usage:
   dropbox_upload.py LOCAL_FILE [DEST_PATH]     # DEST defaults to /<basename>
   dropbox_upload.py --delete DEST_PATH
+  dropbox_upload.py --move FROM_PATH TO_PATH   # creates parent folders
 """
 import json
 import os
@@ -55,6 +56,11 @@ def main():
         res = call("https://api.dropboxapi.com/2/files/delete_v2", token,
                    json.dumps({"path": args[1]}).encode())
         print("deleted", res["metadata"]["path_display"])
+        return
+    if args[0] == "--move":
+        res = call("https://api.dropboxapi.com/2/files/move_v2", token, json.dumps(
+            {"from_path": args[1], "to_path": args[2], "autorename": True}).encode())
+        print("moved to", res["metadata"]["path_display"])
         return
     local = args[0]
     dest = args[1] if len(args) > 1 else "/" + os.path.basename(local)
