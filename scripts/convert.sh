@@ -13,9 +13,14 @@
 #       Scan      -> render, rotate upright, split/deskew, OCR, review queue.
 #                    Next: helper agent writes BOOK/03_queue/fixes.txt (prompt in
 #                    docs/low-token-workflow.md), then structure, then finish.
-#   convert.sh finish BOOK_DIR "TITLE" "AUTHOR" OUT_NAME [--first-page N] [--lang en] [--upload]
+#   convert.sh finish BOOK_DIR "TITLE" "AUTHOR" OUT_NAME [--year YYYY] [--surname "S1, S2"]
+#                     [--short "SHORT TITLE"] [--first-page N] [--lang en] [--upload]
 #       Applies fixes (if 03_queue exists and 04_text_fixed doesn't), builds the
 #       EPUB, runs epubcheck, picks 2 sample pages, uploads with --upload.
+#       The EPUB's title and Dropbox name are "Surname - Year - Short title"
+#       (book_name.py; --year is the original publication year, leave it out
+#       if unknown). --upload puts it in Apps/EpubMe/books/ and moves the
+#       fetched inbox file(s) to Apps/EpubMe/sources/<that name>/.
 #       Without --first-page, a scan's printed page numbers set it (guess_first_page.py).
 #
 # Prints only short summaries, so its output is cheap to read.
@@ -43,9 +48,9 @@ start() {
     dropbox|dropbox:*)
       rm -rf "$book/00_inbox"
       if [ "$src" = dropbox ]; then
-        python3 "$here/dropbox_fetch.py" "$book/00_inbox"
+        python3 "$here/dropbox_fetch.py" "$book/00_inbox" --record "$book/source.dropbox"
       else
-        python3 "$here/dropbox_fetch.py" "$book/00_inbox" --name "${src#dropbox:}"
+        python3 "$here/dropbox_fetch.py" "$book/00_inbox" --name "${src#dropbox:}" --record "$book/source.dropbox"
       fi
       src=$(find "$book/00_inbox" -maxdepth 1 -type f | head -1) ;;
   esac
@@ -84,9 +89,16 @@ start() {
 
 finish() {
   local book="$1" title="$2" author="$3" name="$4" upload="" first="" lang=he; shift 4
+  local nameargs=()
   while [ $# -gt 0 ]; do
-    case "$1" in --upload) upload=1 ;; --first-page) first="$2"; shift ;; --lang) lang="$2"; shift ;; esac; shift
+    case "$1" in
+      --upload) upload=1 ;; --first-page) first="$2"; shift ;; --lang) lang="$2"; shift ;;
+      --year) nameargs+=("$2"); shift ;;
+      --surname|--short) nameargs+=("$1" "$2"); shift ;;
+    esac; shift
   done
+  local display; display=$(python3 "$here/book_name.py" "$title" "$author" ${nameargs[@]+"${nameargs[@]}"})
+  echo "library name: $display"
   local extra=()
   if [ -f "$book/source.url" ]; then  # web article: one page file, no page markers
     first=1; extra=(--no-marker 001)
@@ -106,7 +118,7 @@ finish() {
   mkdir -p "$book/05_book_md" "$book/fonts"
   # JSON is valid YAML and quotes titles like פרק י"ג safely
   python3 -c 'import json,sys; m={"title":sys.argv[1],"lang":sys.argv[3]}; sys.argv[2] and m.update(author=sys.argv[2]); print(json.dumps(m,ensure_ascii=False))' \
-    "$title" "$author" "$lang" > "$book/05_book_md/meta.yaml"
+    "$display" "$author" "$lang" > "$book/05_book_md/meta.yaml"
   cp -n "$TOOLS"/fonts/*.ttf "$book/fonts/" 2>/dev/null || true
   if [ "$lang" = en ] && [ ! -f "$book/source.url" ]; then  # not for web text: no OCR slips
     python3 "$here/check_en.py" "$book/04_text_fixed" | tail -15   # OCR slips: "ina", "|" for "I"
@@ -119,7 +131,13 @@ finish() {
     python3 "$here/sample_check.py" "$book/02_pages" "$book/04_text_fixed" "$book/03_queue" "$book/sample" | cut -f1,2
   fi
   if [ -n "$upload" ]; then
-    python3 "$here/dropbox_upload.py" "$book/06_epub/$name.epub" "/$name.epub"
+    python3 "$here/dropbox_upload.py" "$book/06_epub/$name.epub" "/books/$display.epub"
+    if [ -f "$book/source.dropbox" ]; then  # archive the inputs next to the book's name
+      while IFS= read -r p; do
+        [ -n "$p" ] && python3 "$here/dropbox_upload.py" --move "$p" "/sources/$display/${p##*/}"
+      done < "$book/source.dropbox"
+      rm "$book/source.dropbox"
+    fi
   fi
 }
 

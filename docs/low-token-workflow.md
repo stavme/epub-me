@@ -17,8 +17,24 @@ else from disk, and page images never enter the main conversation.
 scripts/convert.sh start  SOURCE BOOK [--lang en]   # PDF, photo folder, or "dropbox:FILE NAME"
 # scans only: helper agent (Sonnet) writes BOOK/03_queue/fixes.txt
 # structure pass on BOOK/04_text_fixed (step 6; subagents for long chapters)
-scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME [--first-page N] [--lang en] [--upload]
+scripts/convert.sh finish BOOK "TITLE" "AUTHOR" NAME --year YYYY [--surname "S"] [--short "T"] [--first-page N] [--lang en] [--upload]
 ```
+
+Library name (Stav's choice, 2026-11-20): every finished EPUB is called
+"Surname - Year - Short title", e.g. `Goddard - 2010 - Indivisible Territory and
+the Politics of Legitimacy`, `ינון ופרידמן - 1975 - מדוע מצליחים בני הקיבוצים בצבא`.
+finish sets it as the EPUB title (the Boox shows that) and as the Dropbox file
+name. Year = original publication year (Kant 1795, not the translation's), from
+the front matter or a reliable source; if unknown, leave `--year` out rather
+than guess. Two authors: both surnames; three or more: first + "et al." /
+"ואחרים". `--surname` for compound surnames (שני גולן), `--short` when the part
+before ":" is not a good short title. Logic and examples: `scripts/book_name.py`.
+
+Dropbox layout (Apps/EpubMe): `inbox/` only files waiting to be converted;
+`books/` finished EPUBs; `sources/<library name>/` the inputs of each finished
+book; `sources/_in-progress/` files fetched by a conversion that hasn't
+uploaded yet. `start dropbox:NAME` moves the file from inbox to
+`_in-progress`, and `finish --upload` moves it on to `sources/<library name>/`.
 
 Web article (open-access HTML page, e.g. Cambridge Core): `convert.sh start
 "https://..." BOOK --lang en`, then `finish BOOK TITLE AUTHOR NAME --lang en`
@@ -33,7 +49,7 @@ English scan, start also flattens curved pages where that lowers the unknown
 words (`BOOK/dewarp.txt`). With
 several files in the Dropbox inbox, name the file: `start "dropbox:Adobe Scan
 8 Nov 2026.pdf" BOOK`; plain `dropbox` is refused unless the inbox holds one
-file, because it would fetch (and move to `/inbox/done`) every file.
+file, because it would fetch (and move out of the inbox) every file.
 
 Every tool call re-reads the whole conversation (over 95% of a thread's
 tokens on 2026-11-06), so a conversion thread should be a handful of calls:
@@ -78,7 +94,7 @@ work only: `EPUBME_ALLOW_PAGE_WRITES=1` (or `EPUBME_EDIT_LIMIT` /
 
 - **Intake**: don't attach scans to the conversation (an attachment is read
   into context). Drop them in Dropbox `Apps/EpubMe/inbox` and run
-  `dropbox_fetch.py BOOK/00_src --name FILE`; the file moves to `/inbox/done`
+  `dropbox_fetch.py BOOK/00_src --name FILE`; the file moves to `/sources/_in-progress`
   afterwards. `dropbox_fetch.py --list` (or `--keep`) to only look.
 0. **Text or scan?** `check_pdf.py FILE.pdf BOOK/04_text_fixed`. If the PDF
    already has a text layer (born-digital), it writes the page files directly
