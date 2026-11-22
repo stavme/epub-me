@@ -97,6 +97,18 @@ class BookmarkletInBrowser(unittest.TestCase):
         for gone in (">מאמר<", "•", "שיתוף", "פוסט אחר"):
             self.assertNotIn(gone, t)
 
+    def test_author_links_and_json_ld_date(self):
+        # INSS: no author or date meta; writers are links under the title, date in JSON-LD
+        s, z = self.run_page("inss.html")
+        t = z.read("EPUB/text.xhtml").decode()
+        opf = z.read("EPUB/content.opf").decode()
+        self.assertIn("<dc:creator>אופירה כותבת, דן שני</dc:creator>", opf)
+        self.assertIn("<dc:title>כותבת ושני - 2026 - כותרת</dc:title>", opf)
+        self.assertEqual(t.count("אופירה כותבת"), 1)                 # only as the byline
+        for gone in ("עקבו אחרינו", "מישהו אחר"):
+            self.assertNotIn(gone, opf)
+        self.assertNotIn("עקבו אחרינו", t)
+
     def test_iphone_uses_share_sheet(self):
         # iPhone Safari names blob downloads with a random id, so the box offers Share
         s, z = self.run_page("hebrew.html", "ios")

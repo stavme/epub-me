@@ -143,6 +143,7 @@
         authors = [txt(b.textContent)];
         SKIP_ELS.push(first);
       }
+      if (!authors.length) authors = bylineLinks();
     }
     var rtl = isRtl(roots[0].el);
     var lang = (doc.documentElement.getAttribute('lang') || '').split('-')[0].toLowerCase();
@@ -152,6 +153,22 @@
     var plainHeads = !cambridge && !roots[0].el.querySelector('h2, h3, h4');
     return { title: title, authors: authors, roots: roots, rtl: rtl, lang: lang,
       cambridge: cambridge, notesBox: notesBox, plainHeads: plainHeads, year: pubYear() };
+  }
+
+  // Pages with no author meta often list the writers as links in one box under
+  // the title (INSS: <a class="author" href=".../person/...">). Take the names in
+  // the first such box only, so "more by" lists further down are not picked up.
+  function isName(s) {
+    return /^[^.,:;!?()\d@_]{2,40}$/.test(s) && s.split(' ').length <= 4;
+  }
+  function bylineLinks() {
+    var links = doc.querySelectorAll('[rel~="author"], a.author, .author a, .byline a, [itemprop="author"]');
+    if (!links.length) return [];
+    var box = links[0].parentElement;
+    var mine = Array.prototype.filter.call(links, function (a) { return a.parentElement === box; });
+    var names = uniq(mine.map(function (a) { return txt(a.textContent); }).filter(isName));
+    if (names.length) SKIP_ELS.push(box);
+    return names;
   }
 
   function dropSiteName(t) {
@@ -183,7 +200,7 @@
 
   // ---------- building XHTML ----------
   var SKIP = /^(script|style|noscript|template|button|input|select|textarea|form|nav|iframe|object|embed|video|audio|canvas|svg|math|dialog|link|meta|label)$/;
-  var SKIP_CLASS = /(^|\s)(show-for-sr|sr-only|visually-hidden|screen-reader-text|hide|hidden|share|social|related|advert|ad-|cookie|newsletter|toolbar|breadcrumb)(\s|$)/i;
+  var SKIP_CLASS = /(^|\s)(show-for-sr|sr-only|visually-hidden|screen-reader-text|hide|hidden|share|social|related|advert|ad-|cookie|newsletter|toolbar|breadcrumb|google-follow-btn)(\s|$)/i;
   var SKIP_ELS = [];   // elements used elsewhere (the byline paragraph)
   var NOTE_BOX = '#footnotes-list, .footnotes, [role="doc-endnotes"], [role="doc-footnotes"], ol.references, section.footnotes, div.footnotes, #footnotes, .endnotes';
 
@@ -784,9 +801,20 @@
   // Used for the file name and dc:title, because the Boox library shows dc:title.
   function pubYear() {
     var d = meta('citation_publication_date')[0] || meta('citation_date')[0] || meta('citation_online_date')[0] ||
-      meta('article:published_time')[0] || meta('dc.date')[0] || meta('DC.date')[0] || '';
+      meta('article:published_time')[0] || meta('dc.date')[0] || meta('DC.date')[0] || ldDate() || '';
     var m = /(1[5-9]|20)\d\d/.exec(d);
     return m ? m[0] : '';
+  }
+
+  // schema.org JSON-LD ("datePublished"), for sites (Yoast SEO) that set no date meta
+  function ldDate() {
+    var found = '';
+    Array.prototype.some.call(doc.querySelectorAll('script[type="application/ld+json"]'), function (s) {
+      var m = /"datePublished"\s*:\s*"([^"]+)"/.exec(s.textContent || '');
+      if (m) found = m[1];
+      return !!m;
+    });
+    return found;
   }
 
   function libraryName(art) {
