@@ -73,6 +73,121 @@ def fix_order(text):
     return "\n".join(line[::-1].translate(MIRROR) for line in text.splitlines())
 
 
+NOTE_THEN_LATIN = re.compile(r"^(\[[^\[\]]*[א-ת][^\[\]]*\]) \)(.*[A-Za-z0-9].*)$")
+NOTE_AFTER_NUMBERS = re.compile(r"\[ \)([0-9a-z:,.\- ]*?)([א-ת][^\[\]]*)\]")
+
+
+def _numbers_in_order(run):
+    """'816 :2018 ,' (visual) -> ', 2018: 816'; leading punctuation moves to the end."""
+    out = []
+    for tok in reversed(run.split()):
+        m = re.match(r"^([:,.]*)(.*)$", tok)
+        out.append(m.group(2) + m.group(1))
+    return " ".join(t for t in out if t)
+
+
+def fix_note_after_quote(line):
+    """A Hebrew note in brackets ("[ההדגשה שלי]") after a citation's closing
+    paren comes out of pdftotext in the wrong run order:
+      "[ההדגשה שלי] )achieve that. (Rice, 2011:601"  (last line of an English quote)
+        -> "achieve that. (Rice, 2011:601) [ההדגשה שלי]"
+      "(אולמרט[ )816 :2018 ,ההדגשה שלי]"  (Hebrew quote)
+        -> "(אולמרט, 2018: 816) [ההדגשה שלי]"
+    When it applies: born-digital Hebrew PDFs with English or Hebrew quotes
+    that end in "(source) [note]" (Varon thesis, 2026-11-22). Lines without
+    that shape are returned unchanged."""
+    m = NOTE_THEN_LATIN.match(line.strip())
+    if m:
+        return f"{m.group(2).strip()}) {m.group(1)}"
+
+    def fix(m):
+        nums = _numbers_in_order(m.group(1))
+        return (nums + ") " if nums else ") ") + "[" + m.group(2).strip() + "]"
+
+    return NOTE_AFTER_NUMBERS.sub(fix, line)
+
+
+def _parens_ok(t):
+    depth = 0
+    for c in t:
+        depth += (c == "(") - (c == ")")
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+OPEN_AS_CLOSE = re.compile(r"(?<=[A-Za-z0-9.])\((?![A-Za-z0-9])")  # "2015(." "MHS(,"
+CLOSE_AS_OPEN = re.compile(r"(?<![A-Za-z0-9.;:!?…])\)(?=[A-Za-z0-9])")  # "בסכסוך)Jackson" ")2013:23"
+
+
+REVERSED_PAIR = re.compile(r"(?<![A-Za-z0-9.;:!?…])\)([A-Za-z0-9][^()\n]{0,120}?[A-Za-z0-9.])\((?![A-Za-z0-9])")
+
+
+# an English quote whose citation's ")" landed at the end of the quote's first
+# line: "it is the)skillful ... (Nye & Armitage, 2007 [note]" -> "... 2007) [note]"
+QUOTE_CLOSER = re.compile(r"^([^()]*?[A-Za-z,.…])\)([A-Za-z\"“][^()]*?\([^()]*?[A-Za-z0-9.])(\s*\[[^\[\]]*\])?\s*$")
+
+
+def _unmatched(t):
+    depth = bad = 0
+    for c in t:
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            if depth:
+                depth -= 1
+            else:
+                bad += 1
+    return bad + depth
+
+
+def fix_parens(p):
+    """Mirror parens that pdftotext left facing the wrong way around Latin
+    citations in Hebrew text: "בסכסוך)Jackson, 1952(" -> "בסכסוך(Jackson, 1952)",
+    "הדדי")MHS(" -> "הדדי"(MHS)".
+    Candidates: ")" glued to the Latin or digits after it, "(" glued to the
+    Latin or digits before it. A candidate pair (a ")" and the next "(") or a
+    single candidate is flipped only if that leaves fewer unmatched parens, so
+    a paragraph whose parens already balance never changes.
+    When it applies: born-digital Hebrew PDFs (Varon thesis, 2026-11-22)."""
+    if _parens_ok(p):
+        return p
+    # whole reversed pairs first: ")MHS(" ")Rice, 2011(" -> "(MHS)" "(Rice, 2011)";
+    # volume(issue) in Hebrew references: ",)3(11." -> ", 11(3)." and "19)4)" -> "19(4)"
+    whole = re.sub(r",\)(\d+)\((\d+)", r", \2(\1)", p)
+    whole = re.sub(r"\b(\d+)\)(\d+)\)", r"\1(\2)", whole)
+    whole = REVERSED_PAIR.sub(lambda m: "(" + m.group(1) + ")", whole)
+    whole = QUOTE_CLOSER.sub(r"\1 \2)\3", whole)
+    if _unmatched(whole) <= _unmatched(p):
+        p0, p = p, whole
+    else:
+        p0 = p
+    s = list(p)
+    opens = [m.start() for m in CLOSE_AS_OPEN.finditer(p)]
+    closes = [m.start() for m in OPEN_AS_CLOSE.finditer(p)]
+    moves = []
+    for i in opens:
+        later = [j for j in closes if j > i]
+        if later:
+            moves.append((i, later[0]))
+    moves += [(i,) for i in opens] + [(j,) for j in closes]
+    for mv in moves:
+        if _parens_ok("".join(s)):
+            break
+        t = s[:]
+        for k in mv:
+            t[k] = "(" if t[k] == ")" else ")"
+        if _unmatched("".join(t)) < _unmatched("".join(s)):
+            s = t
+    q = "".join(s)
+    p = p0
+    if q != p:  # the flipped parens lost their spaces: "word(Name", "2015)word"
+        q = re.sub(r"(?<=[א-ת])\((?=[A-Za-z0-9])", " (", q)
+        q = re.sub(r"\)(?=[א-ת])", ") ", q)
+        q = re.sub(r"(?<=[א-ת]),\((?=[A-Za-z0-9])", ", (", q)
+    return q
+
+
 def tidy(p):
     p = re.sub(r"\s+", " ", p).strip()
     p = re.sub(r"\s([.,;:!?])(?=[א-ת\"(])", r"\1 ", p)  # ". word" -> "word. word"
@@ -85,7 +200,7 @@ def tidy(p):
 
 
 def to_paragraphs(text):
-    paras = [tidy(p) for p in re.split(r"\n\s*\n", text)]
+    paras = [fix_parens(tidy(p)) for p in re.split(r"\n\s*\n", text)]
     return "\n\n".join(p for p in paras if p) + "\n"
 
 
@@ -131,6 +246,83 @@ def page_stats(geo):
     return body, right, left, step
 
 
+HEB_ONLY = re.compile(r"[א-ת]")
+LATIN = re.compile(r"[A-Za-z]")
+
+
+def line_breaks(g, para, right, left, rtl, justified=False):
+    """(starts, ends): does printed line g start a new paragraph, or end one?
+    para holds the geometry of the lines already in the open paragraph;
+    justified says most lines of the page reach both margins.
+
+    Measured from the side where lines start (the right in Hebrew, the left
+    in English; rtl says which, by the line's own letters):
+      - a line that starts in from the paragraph's (or page's) start edge is
+        a first-line indent: a new paragraph starts there;
+      - a line that starts further out than the paragraph's lines (body text
+        after an indented block quote) starts a new paragraph too, except
+        the line after an indented first line;
+      - a line shorter than 60% of the block's width ends the paragraph; the
+        first line of a block only when it starts at the page margin (an
+        indented quote line is short but goes on);
+      - justified text: a body line that stops short of the far margin ends
+        the paragraph (in ragged text most lines do, so not there).
+    Hebrew indents used to count as ends, which split every paragraph after
+    its first line (Varon thesis, 2026-11-22)."""
+    width = right - left
+    tol = width * 0.05
+    if rtl:
+        start, stop = (lambda x: x["x1"]), (lambda x: x["x0"])
+        inward = lambda a, b: b - a  # how far a starts in from b
+    else:
+        start, stop = (lambda x: x["x0"]), (lambda x: x["x1"])
+        inward = lambda a, b: a - b
+    margin, far = (right, left) if rtl else (left, right)
+    at_margin = inward(start(g), margin) <= tol
+    short_of_far = justified and at_margin and inward(far, stop(g)) > tol
+    if not para:
+        starts = not at_margin
+        ends = at_margin and g["x1"] - g["x0"] < width * 0.6 or short_of_far
+        return starts, ends
+    edge = [start(x) for x in para[1:]] or [start(para[0])]
+    edge = max(edge) if rtl else min(edge)
+    first_indented = len(para) == 1 and inward(start(para[0]), margin) > tol and at_margin
+    starts = inward(start(g), edge) > tol or (inward(edge, start(g)) > tol and not first_indented)
+    if starts:
+        return True, line_breaks(g, [], right, left, rtl, justified)[1]
+    lo = min([x["x0"] for x in para] + [g["x0"]])
+    hi = max([x["x1"] for x in para] + [g["x1"]])
+    ends = g["x1"] - g["x0"] < (hi - lo) * 0.6 or short_of_far
+    return starts, ends
+
+
+def is_justified(geo, right, left):
+    """Most full-size lines reach both margins (within 5% of the width)."""
+    tol = (right - left) * 0.05
+    both = [g for g in geo if g["x1"] - g["x0"] > (right - left) * 0.6]
+    return bool(both) and sum(right - g["x1"] <= tol and g["x0"] - left <= tol
+                              for g in both) >= 0.8 * len(both)
+
+
+def line_direction(t, g, para, para_rtl, tol):
+    """True when printed line t (geometry g) reads right to left. para holds the
+    open paragraph's lines, para_rtl the direction of the previous line.
+      - a "[note]" in brackets does not count;
+      - a line with no letters ("7(1): 69-91.") keeps the previous direction;
+      - a mixed line (Hebrew with a Latin citation) inside a paragraph keeps
+        the paragraph's direction, and so does a Latin-only line that ends
+        flush right with a right-to-left paragraph (a citation on its own line);
+      - otherwise the script with more letters wins."""
+    bare = re.sub(r"\[[^\[\]]*\]", "", t)
+    heb, lat = len(HEB_ONLY.findall(bare)), len(LATIN.findall(bare))
+    if not heb and not lat:
+        return para_rtl
+    rtl = para_rtl if (para and heb and lat) else heb >= lat
+    if para and para_rtl and abs(g["x1"] - para[-1]["x1"]) <= tol:
+        rtl = True
+    return rtl
+
+
 def layout_page(pdf_path, page, n, crop=None, stats=None):
     """With pdfplumber: use line geometry and fonts for structure. A vertical gap
     or a short line ends a paragraph; very large type is a heading (# for the
@@ -140,7 +332,7 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
     raw = page_text(pdf_path, n, crop)
     if crop:
         page = page.crop(crop)
-    lines = [l for l in fix_order(raw).splitlines() if l.strip()]
+    lines = [fix_note_after_quote(l) for l in fix_order(raw).splitlines() if l.strip()]
     geo = []
     for l in page.extract_text_lines(layout=False):
         ch = [c for c in l["chars"] if c["text"].strip()]
@@ -159,7 +351,6 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
         if "Bol" in w["fontname"] and key(w["text"]):
             min(geo, key=lambda g: abs(g["top"] - w["top"]))["boldw"][key(w["text"])] += 1
     body, right, left, step = stats or page_stats(geo)
-    width = right - left
     j, rows = 0, []
     for t in lines:
         c = collections.Counter(ch for ch in t if ch.isalnum())
@@ -175,7 +366,8 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
         # several pdftotext lines on one printed line = table cells or columns
         cell = bool(rows) and rows[-1][1] is geo[best]
         rows.append((t.strip(), geo[best], cell))
-    out, para, para_bold, prev = [], [], [], None
+    justified = is_justified(geo, right, left)
+    out, para, para_bold, para_geo, prev, para_rtl = [], [], [], [], None, True
 
     def flush():
         if para:
@@ -188,8 +380,8 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
                 chunk = tidy(" ".join(para[i:k]))
                 parts.append(f"**{chunk}**" if para_bold[i] else chunk)
                 i = k
-            out.append(" ".join(parts).replace("** **", " "))
-        para.clear(); para_bold.clear()
+            out.append(fix_parens(" ".join(parts).replace("** **", " ")))
+        para.clear(); para_bold.clear(); para_geo.clear()
 
     for t, g, cell in rows:
         if cell and para:
@@ -210,9 +402,15 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
             continue
         if prev and (g["top"] - prev["top"] > step * 1.5 or prev["size"] >= body * 1.4):
             flush()
+        rtl = line_direction(t, g, para_geo, para_rtl, (right - left) * 0.05)
+        para_rtl = rtl
+        starts, ends = line_breaks(g, para_geo, right, left, rtl, justified)
+        if starts:
+            flush()
+        para_geo.append(g)
         para.append(mark_bold(t, g["boldw"])); para_bold.append(False)
-        if right - g["x1"] > width * 0.05 or g["x1"] - g["x0"] < width * 0.6:
-            flush()  # short (or indented-from-the-right) line ends a paragraph
+        if ends:
+            flush()
         prev = g
     flush()
     return "\n\n".join(out) + "\n"
