@@ -75,8 +75,10 @@
     var btn = doc.createElement('button');
     btn.textContent = 'Save / share EPUB';
     btn.setAttribute('style', 'display:block;margin-top:8px;padding:8px 12px;font:15px sans-serif;border-radius:6px;border:0;background:#fff;color:#000');
+    // files only: on iOS, adding a title or text to the share drops apps such as
+    // Dropbox that accept a file but not text from the menu
     btn.onclick = function () {
-      navigator.share({ files: [file], title: name }).then(function () { box.remove(); }, function () { });
+      navigator.share({ files: [file] }).then(function () { box.remove(); }, function () { });
     };
     var close = doc.createElement('button');
     close.textContent = 'Close';
