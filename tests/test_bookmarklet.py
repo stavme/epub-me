@@ -61,6 +61,9 @@ class BookmarkletInBrowser(unittest.TestCase):
         opf = z.read("EPUB/content.opf").decode()
         self.assertIn("<dc:creator>Ann One, Bo Two</dc:creator>", opf)
         self.assertNotIn("page-progression-direction", opf)
+        # library name, as scripts/book_name.py: surnames, year, title before ":"
+        self.assertIn("<dc:title>One &amp; Two - 2023 - A Test Article</dc:title>", opf)
+        self.assertEqual(s["name"], "One & Two - 2023 - A Test Article.epub")
 
     def test_hebrew_generic_page(self):
         s, z = self.run_page("hebrew.html")
@@ -73,13 +76,16 @@ class BookmarkletInBrowser(unittest.TestCase):
         self.assertNotIn("↩", t)
         self.assertNotIn("דף הבית", t)
         self.assertEqual(t.count("<h1"), 1)                         # page h1 is the title
-        self.assertIn('page-progression-direction="rtl"', z.read("EPUB/content.opf").decode())
+        opf = z.read("EPUB/content.opf").decode()
+        self.assertIn('page-progression-direction="rtl"', opf)
+        self.assertIn("<dc:title>ישראלי - הילכו שניים יחדיו</dc:title>", opf)  # no date: no year
 
     def test_wordpress_post(self):
         s, z = self.run_page("wordpress.html")
         t = z.read("EPUB/text.xhtml").decode()
         opf = z.read("EPUB/content.opf").decode()
-        self.assertIn("<dc:title>כותרת המאמר</dc:title>", opf)       # site name dropped
+        self.assertIn("<dc:title>כותבת - 2025 - כותרת המאמר</dc:title>", opf)  # site name dropped
+        self.assertIn('<h1 id="title">כותרת המאמר</h1>', t)          # the page keeps the full title
         self.assertIn("<dc:creator>ישראלה כותבת</dc:creator>", opf)  # bold first line, not the login
         self.assertNotIn("wsr_site", t + opf)
         self.assertEqual(t.count("ישראלה כותבת"), 1)                 # only as the byline

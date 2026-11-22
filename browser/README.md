@@ -27,7 +27,9 @@ new line.
    the full text has loaded.
 2. Click **EpubMe** on the bookmarks bar. A dark box in the top right corner
    shows progress, then the file name.
-3. The `.epub` lands in your Downloads folder, named after the article title.
+3. The `.epub` lands in your Downloads folder, named like the rest of the
+   library: "Surname - Year - Title" (the year from the page's publish date, left
+   out when the page has none). The same name is the book title on the Boox.
    Copy it to the Boox (or to Dropbox `Apps/EpubMe`).
 
 If the box says some figures "could not be downloaded", the EPUB still has their

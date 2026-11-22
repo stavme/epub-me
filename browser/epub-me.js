@@ -47,7 +47,7 @@
     var fonts = art.rtl ? await fetchFonts() : [];
     var files = pack(art, book, fonts);
     var blob = await zip(files);
-    var name = fileName(art.title) + '.epub';
+    var name = libraryName(art) + '.epub';
     var a = doc.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;
@@ -124,7 +124,7 @@
     if (!/^[a-z]{2,3}$/.test(lang)) lang = rtl ? 'he' : 'en';
     var plainHeads = !cambridge && !roots[0].el.querySelector('h2, h3, h4');
     return { title: title, authors: authors, roots: roots, rtl: rtl, lang: lang,
-      cambridge: cambridge, notesBox: notesBox, plainHeads: plainHeads };
+      cambridge: cambridge, notesBox: notesBox, plainHeads: plainHeads, year: pubYear() };
   }
 
   function dropSiteName(t) {
@@ -730,7 +730,7 @@
       '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="' + art.lang + '"' + (art.rtl ? ' dir="rtl"' : '') + '>\n' +
       '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n' +
       '<dc:identifier id="bookid">' + id + '</dc:identifier>\n' +
-      '<dc:title>' + esc(art.title) + '</dc:title>\n' +
+      '<dc:title>' + esc(libraryName(art)) + '</dc:title>\n' +
       (art.authors.length ? '<dc:creator>' + esc(art.authors.join(', ')) + '</dc:creator>\n' : '') +
       '<dc:language>' + art.lang + '</dc:language>\n' +
       '<meta property="dcterms:modified">' + modified + '</meta>\n' +
@@ -752,11 +752,29 @@
     return files;
   }
 
-  function fileName(title) {
-    var s = title.replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (s.length > 80) s = s.slice(0, 80).replace(/\s+\S*$/, '');
-    return s.replace(/ /g, '-') || 'article';
+  // Library name, same rules as scripts/book_name.py: "Surname - Year - Short title"
+  // (2 authors "A & B" / "A וB", 3+ "A et al." / "A ואחרים"; no year: left out).
+  // Used for the file name and dc:title, because the Boox library shows dc:title.
+  function pubYear() {
+    var d = meta('citation_publication_date')[0] || meta('citation_date')[0] || meta('citation_online_date')[0] ||
+      meta('article:published_time')[0] || meta('dc.date')[0] || meta('DC.date')[0] || '';
+    var m = /(1[5-9]|20)\d\d/.exec(d);
+    return m ? m[0] : '';
   }
+
+  function libraryName(art) {
+    var hebrew = /[\u0590-\u05ff]/.test(art.title + art.authors.join(' '));
+    var names = art.authors.join(',').split(/,| and | & /).map(function (a) { return a.trim(); })
+      .filter(Boolean).map(function (a) { return a.split(/\s+/).pop(); });
+    var who = names.length === 1 ? names[0] : names.length === 2 ? (hebrew ? names[0] + ' \u05d5' + names[1] : names[0] + ' & ' + names[1])
+      : names.length ? names[0] + (hebrew ? ' \u05d5\u05d0\u05d7\u05e8\u05d9\u05dd' : ' et al.') : '';
+    var t = art.title;
+    if (t.replace(/^:+|:+$/g, '').indexOf(':') >= 0) t = t.split(':')[0];
+    t = t.replace(/[\\\/:*?"<>|\u05f4\u201c\u201d\u0000-\u001f]/g, '').replace(/\s+/g, ' ').replace(/^[\s.,\-\u2013\u2014']+|[\s.,\-\u2013\u2014']+$/g, '');
+    if (t.length > 100) t = t.slice(0, 100).replace(/\s+\S*$/, '');
+    return [who, art.year, t].filter(Boolean).join(' - ') || 'article';
+  }
+
 
   // ---------- ZIP writer (stored or deflated) ----------
   var CRC = (function () {
