@@ -27,6 +27,9 @@ figures (`BOOK/img/`) and numbered footnotes come from the page by
 `scripts/html_article.py`; glance at `04_text_fixed/001.md`. The sandbox's
 network policy must allow the article host and its image host (Cambridge:
 `www.cambridge.org`, `static.cambridge.org`).
+Behind a library login (or to skip the thread entirely), Stav can use the
+browser button instead: `browser/README.md`. It builds the same kind of EPUB
+in their browser from the page they are signed in to.
 
 English book (scan or text PDF): pass `--lang en` to both commands. For an
 English scan, start also flattens curved pages where that lowers the unknown
