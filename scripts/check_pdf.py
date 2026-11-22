@@ -131,6 +131,64 @@ def page_stats(geo):
     return body, right, left, step
 
 
+HEB_ONLY = re.compile(r"[א-ת]")
+LATIN = re.compile(r"[A-Za-z]")
+
+
+def line_breaks(g, para, right, left, rtl, justified=False):
+    """(starts, ends): does printed line g start a new paragraph, or end one?
+    para holds the geometry of the lines already in the open paragraph;
+    justified says most lines of the page reach both margins.
+
+    Measured from the side where lines start (the right in Hebrew, the left
+    in English; rtl says which, by the line's own letters):
+      - a line that starts in from the paragraph's (or page's) start edge is
+        a first-line indent: a new paragraph starts there;
+      - a line that starts further out than the paragraph's lines (body text
+        after an indented block quote) starts a new paragraph too, except
+        the line after an indented first line;
+      - a line shorter than 60% of the block's width ends the paragraph; the
+        first line of a block only when it starts at the page margin (an
+        indented quote line is short but goes on);
+      - justified text: a body line that stops short of the far margin ends
+        the paragraph (in ragged text most lines do, so not there).
+    Hebrew indents used to count as ends, which split every paragraph after
+    its first line (Varon thesis, 2026-11-22)."""
+    width = right - left
+    tol = width * 0.05
+    if rtl:
+        start, stop = (lambda x: x["x1"]), (lambda x: x["x0"])
+        inward = lambda a, b: b - a  # how far a starts in from b
+    else:
+        start, stop = (lambda x: x["x0"]), (lambda x: x["x1"])
+        inward = lambda a, b: a - b
+    margin, far = (right, left) if rtl else (left, right)
+    at_margin = inward(start(g), margin) <= tol
+    short_of_far = justified and at_margin and inward(far, stop(g)) > tol
+    if not para:
+        starts = not at_margin
+        ends = at_margin and g["x1"] - g["x0"] < width * 0.6 or short_of_far
+        return starts, ends
+    edge = [start(x) for x in para[1:]] or [start(para[0])]
+    edge = max(edge) if rtl else min(edge)
+    first_indented = len(para) == 1 and inward(start(para[0]), margin) > tol and at_margin
+    starts = inward(start(g), edge) > tol or (inward(edge, start(g)) > tol and not first_indented)
+    if starts:
+        return True, line_breaks(g, [], right, left, rtl, justified)[1]
+    lo = min([x["x0"] for x in para] + [g["x0"]])
+    hi = max([x["x1"] for x in para] + [g["x1"]])
+    ends = g["x1"] - g["x0"] < (hi - lo) * 0.6 or short_of_far
+    return starts, ends
+
+
+def is_justified(geo, right, left):
+    """Most full-size lines reach both margins (within 5% of the width)."""
+    tol = (right - left) * 0.05
+    both = [g for g in geo if g["x1"] - g["x0"] > (right - left) * 0.6]
+    return bool(both) and sum(right - g["x1"] <= tol and g["x0"] - left <= tol
+                              for g in both) >= 0.8 * len(both)
+
+
 def layout_page(pdf_path, page, n, crop=None, stats=None):
     """With pdfplumber: use line geometry and fonts for structure. A vertical gap
     or a short line ends a paragraph; very large type is a heading (# for the
@@ -159,7 +217,6 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
         if "Bol" in w["fontname"] and key(w["text"]):
             min(geo, key=lambda g: abs(g["top"] - w["top"]))["boldw"][key(w["text"])] += 1
     body, right, left, step = stats or page_stats(geo)
-    width = right - left
     j, rows = 0, []
     for t in lines:
         c = collections.Counter(ch for ch in t if ch.isalnum())
@@ -175,7 +232,8 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
         # several pdftotext lines on one printed line = table cells or columns
         cell = bool(rows) and rows[-1][1] is geo[best]
         rows.append((t.strip(), geo[best], cell))
-    out, para, para_bold, prev = [], [], [], None
+    justified = is_justified(geo, right, left)
+    out, para, para_bold, para_geo, prev, para_rtl = [], [], [], [], None, True
 
     def flush():
         if para:
@@ -189,7 +247,7 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
                 parts.append(f"**{chunk}**" if para_bold[i] else chunk)
                 i = k
             out.append(" ".join(parts).replace("** **", " "))
-        para.clear(); para_bold.clear()
+        para.clear(); para_bold.clear(); para_geo.clear()
 
     for t, g, cell in rows:
         if cell and para:
@@ -210,9 +268,20 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
             continue
         if prev and (g["top"] - prev["top"] > step * 1.5 or prev["size"] >= body * 1.4):
             flush()
+        heb, lat = len(HEB_ONLY.findall(t)), len(LATIN.findall(t))
+        # a mixed line (Hebrew ending in a Latin citation) keeps its paragraph's direction
+        # and so does a Latin-only line (a citation) that ends flush with it on the right
+        rtl = heb >= lat if not (para_geo and heb and lat) else para_rtl
+        if para_geo and para_rtl and abs(g["x1"] - para_geo[-1]["x1"]) <= (right - left) * 0.05:
+            rtl = True
+        para_rtl = rtl
+        starts, ends = line_breaks(g, para_geo, right, left, rtl, justified)
+        if starts:
+            flush()
+        para_geo.append(g)
         para.append(mark_bold(t, g["boldw"])); para_bold.append(False)
-        if right - g["x1"] > width * 0.05 or g["x1"] - g["x0"] < width * 0.6:
-            flush()  # short (or indented-from-the-right) line ends a paragraph
+        if ends:
+            flush()
         prev = g
     flush()
     return "\n\n".join(out) + "\n"

@@ -85,3 +85,9 @@ What went wrong and what changed:
 - **Parallel tesseract**: several tesseract processes at once crawl (a 3 s page took over 10 minutes with 4 in parallel) unless each has `OMP_THREAD_LIMIT=1`.
 - **Superscript footnote numbers** were lost in English OCR, so the notes became a numbered list at the end of each page, with no links from the text. When the scan has numbered notes, the structure pass puts the markers back (`[^n]` where the scan shows the number) instead of only listing the notes.
 - **Italics** are not kept: OCR gives no font style. Italic book titles and terms come out as plain text; only the structure pass, looking at the scan, can add `*...*`.
+
+## Born-digital Hebrew thesis (Varon, 2026-11-22): paragraphs split mid-sentence
+
+- **A Hebrew first-line indent starts a paragraph; it does not end one.** `check_pdf.py` ended a paragraph on any line that stopped short of the right margin, a rule written for English (a short last line). In right-to-left text that line is the indented first line, so every paragraph broke after its first line (about 860 breaks in the delivered EPUB). `line_breaks()` now measures from the side where lines start: an indent there starts a paragraph, a line under 60% of the block's width ends one, and a block quote indented on both sides stays one paragraph. When it applies: born-digital PDFs only (scans go through OCR). The "stops short of the far margin" end rule now holds only on justified pages (`is_justified`), since in ragged text most lines stop short.
+- Mixed lines (Hebrew ending in a Latin citation, or a citation alone on the last line) keep their paragraph's direction.
+- Still open: a citation that follows an English quote in a Hebrew page can land in its own paragraph, and wrapped bibliography entries on ragged pages can split at the wrap.
