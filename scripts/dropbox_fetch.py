@@ -3,8 +3,10 @@
 
 Files dropped into Apps/EpubMe/inbox (from a phone, the Boox, or a computer)
 are fetched here without ever passing through the conversation, so they cost
-no tokens. After a successful download each file is moved to /inbox/done
-(pass --keep to leave it).
+no tokens. After a successful download each file is moved to
+/sources/_in-progress (pass --keep to leave it); with --record FILE its new
+Dropbox path is appended to FILE, so `convert.sh finish --upload` can move it
+to /sources/<book name>/ next to the finished books/<book name>.epub.
 
 Same env vars and network access as dropbox_upload.py.
 
@@ -13,7 +15,7 @@ fetch only its own file: pass --name. Without --name, a fetch is refused when
 the inbox holds more than one file (it would download and move them all).
 
 Usage:
-  dropbox_fetch.py OUT_DIR [--name FILE] [--inbox /inbox] [--keep]
+  dropbox_fetch.py OUT_DIR [--name FILE] [--inbox /inbox] [--keep] [--record FILE]
   dropbox_fetch.py --list [--inbox /inbox]
 """
 import argparse
@@ -25,6 +27,9 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dropbox_upload import access_token, call  # noqa: E402
+
+
+IN_PROGRESS = "/sources/_in-progress"  # fetched, book not finished yet
 
 
 def list_folder(token, path):
@@ -69,6 +74,7 @@ def main():
     ap.add_argument("--name", help="fetch only this file (exact name)")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--record", help="append each archived Dropbox path to this file")
     a = ap.parse_args()
     token = access_token()
     files = list_folder(token, a.inbox)
@@ -87,9 +93,12 @@ def main():
             sys.exit(f"size mismatch for {e['name']}")
         print(f"downloaded {e['name']} ({e['size']} bytes) -> {out}")
         if not a.keep:
-            call("https://api.dropboxapi.com/2/files/move_v2", token, json.dumps({
-                "from_path": e["path_lower"], "to_path": f"{a.inbox}/done/{e['name']}",
+            res = call("https://api.dropboxapi.com/2/files/move_v2", token, json.dumps({
+                "from_path": e["path_lower"], "to_path": f"{IN_PROGRESS}/{e['name']}",
                 "autorename": True}).encode())
+            if a.record:
+                with open(a.record, "a", encoding="utf-8") as f:
+                    f.write(res["metadata"]["path_display"] + "\n")
 
 
 if __name__ == "__main__":
