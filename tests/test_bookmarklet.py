@@ -75,6 +75,22 @@ class BookmarkletInBrowser(unittest.TestCase):
         self.assertEqual(t.count("<h1"), 1)                         # page h1 is the title
         self.assertIn('page-progression-direction="rtl"', z.read("EPUB/content.opf").decode())
 
+    def test_wordpress_post(self):
+        s, z = self.run_page("wordpress.html")
+        t = z.read("EPUB/text.xhtml").decode()
+        opf = z.read("EPUB/content.opf").decode()
+        self.assertIn("<dc:title>כותרת המאמר</dc:title>", opf)       # site name dropped
+        self.assertIn("<dc:creator>ישראלה כותבת</dc:creator>", opf)  # bold first line, not the login
+        self.assertNotIn("wsr_site", t + opf)
+        self.assertEqual(t.count("ישראלה כותבת"), 1)                 # only as the byline
+        heads = [(h, x) for h, x in __import__("re").findall(r"<h([23]) id=\"s\d+\">([^<]+)<", t)]
+        self.assertEqual(heads, [("2", "פתיחה"), ("3", "כותרת משנה"), ("2", "חלק א'"),
+                                 ("3", "נושא ראשון"), ("3", "נושא שני")])
+        self.assertIn("<p>משפט קצר שנגמר בנקודה.</p>", t)
+        self.assertIn('<span class="missing">', t)                  # lost inline image: no <p> in <p>
+        for gone in (">מאמר<", "•", "שיתוף", "פוסט אחר"):
+            self.assertNotIn(gone, t)
+
 
 if __name__ == "__main__":
     unittest.main()

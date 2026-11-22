@@ -51,7 +51,7 @@ jobs:
           export NODE_PATH="$RUNNER_TEMP/pw/node_modules"
           python3 scripts/build_bookmarklet.py --check
           python3 -m unittest tests.test_bookmarklet -v
-          for p in cambridge hebrew; do
+          for p in cambridge hebrew wordpress; do
             node tests/bookmarklet_e2e.js "$p.html" "$RUNNER_TEMP/$p.epub"
             epubcheck "$RUNNER_TEMP/$p.epub"
           done

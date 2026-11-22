@@ -83,8 +83,11 @@
     var title = meta('citation_title')[0] || meta('og:title')[0] || meta('dc.title')[0];
     var h1 = doc.querySelector('article h1, main h1, h1');
     if (!title) title = h1 ? txt(h1.textContent) : txt(doc.title) || 'Article';
+    title = dropSiteName(txt(title));
     var authors = uniq(meta('citation_author'));
     if (!authors.length) authors = uniq(meta('dc.creator').concat(meta('author')));
+    // WordPress puts the login of whoever posted it ("wsr_kulna"), not the writer
+    authors = authors.filter(function (a) { return !(/^[\w.\-]+$/.test(a) && (/[_\d]/.test(a) || a === a.toLowerCase())); });
 
     var roots = [];
     var notesBox = doc.querySelector('#footnotes-list');
@@ -103,18 +106,45 @@
       var refs = doc.querySelector('#references-list, div.ref-list, div.references');
       if (refs && !(notesBox && notesBox.contains(refs))) roots.push({ kind: 'refs', el: refs });
     } else {
-      roots.push({ kind: 'sec', el: mainRoot() });
+      var main = mainRoot();
+      roots.push({ kind: 'sec', el: main });
+      // a short all-bold first paragraph is the writer's name ("אריאל חנוך")
+      var first = main.querySelector('p');
+      var b = first && first.querySelector('strong, b');
+      if (!authors.length && b && txt(b.textContent) === txt(first.textContent) &&
+          /^[^.,:;!?()]{2,40}$/.test(txt(b.textContent)) && txt(b.textContent).split(' ').length <= 4) {
+        authors = [txt(b.textContent)];
+        SKIP_ELS.push(first);
+      }
     }
     var rtl = isRtl(roots[0].el);
     var lang = (doc.documentElement.getAttribute('lang') || '').split('-')[0].toLowerCase();
     if (rtl && !/^(he|iw|yi|ar|fa)$/.test(lang)) lang = 'he';
     if (lang === 'iw') lang = 'he';
     if (!/^[a-z]{2,3}$/.test(lang)) lang = rtl ? 'he' : 'en';
-    return { title: txt(title), authors: authors, roots: roots, rtl: rtl, lang: lang,
-      cambridge: cambridge, notesBox: notesBox };
+    var plainHeads = !cambridge && !roots[0].el.querySelector('h2, h3, h4');
+    return { title: title, authors: authors, roots: roots, rtl: rtl, lang: lang,
+      cambridge: cambridge, notesBox: notesBox, plainHeads: plainHeads };
+  }
+
+  function dropSiteName(t) {
+    var site = txt(meta('og:site_name')[0] || meta('application-name')[0] || '');
+    if (!site) return t;
+    var i = t.lastIndexOf(site);
+    if (i > 0 && i + site.length === t.length) {
+      var rest = t.slice(0, i).replace(/[\s\-|\u2013\u2014:\u00b7]+$/, '');
+      if (rest && rest.length < i) return rest;
+    }
+    return t;
   }
 
   function mainRoot() {
+    // the post body itself, when the site marks it (WordPress, Elementor, schema.org)
+    var BODY = '.entry-content, .elementor-widget-theme-post-content, [itemprop="articleBody"], .post-content, .article-body, .article-content, .post-body';
+    var bodies = Array.prototype.filter.call(doc.querySelectorAll(BODY), function (c) {
+      return Array.prototype.reduce.call(c.querySelectorAll('p'), function (s, p) { return s + p.textContent.length; }, 0) > 500;
+    });
+    if (bodies.length) return bodies.filter(function (c) { return !bodies.some(function (o) { return o !== c && o.contains(c); }); })[0];
     var cands = Array.prototype.slice.call(doc.querySelectorAll('article, main, [role="main"], #content, .content'));
     var best = null, bestLen = 0;
     cands.forEach(function (c) {
@@ -127,6 +157,7 @@
   // ---------- building XHTML ----------
   var SKIP = /^(script|style|noscript|template|button|input|select|textarea|form|nav|iframe|object|embed|video|audio|canvas|svg|math|dialog|link|meta|label)$/;
   var SKIP_CLASS = /(^|\s)(show-for-sr|sr-only|visually-hidden|screen-reader-text|hide|hidden|share|social|related|advert|ad-|cookie|newsletter|toolbar|breadcrumb)(\s|$)/i;
+  var SKIP_ELS = [];   // elements used elsewhere (the byline paragraph)
   var NOTE_BOX = '#footnotes-list, .footnotes, [role="doc-endnotes"], [role="doc-footnotes"], ol.references, section.footnotes, div.footnotes, #footnotes, .endnotes';
 
   function render(art) {
@@ -208,7 +239,7 @@
   function skipped(n) {
     if (n.nodeType !== 1) return false;
     var name = n.localName.toLowerCase();
-    if (SKIP.test(name)) return true;
+    if (SKIP.test(name) || SKIP_ELS.indexOf(n) >= 0) return true;
     if (n.hidden || n.getAttribute('aria-hidden') === 'true') return true;
     var cls = n.getAttribute('class') || '';
     if (SKIP_CLASS.test(cls)) return true;
@@ -345,6 +376,8 @@
         var p = el(book, 'p');
         inline(book, c, p);
         trimEdges(p);
+        if (plainHeading(book, p, parent, c)) continue;
+        book.lastHead = 0;
         if (txt(p.textContent) || p.querySelector('img')) parent.appendChild(p);
       } else if (name === 'ol' || name === 'ul') {
         list(book, c, parent);
@@ -367,6 +400,27 @@
       }
     }
     flush();
+  }
+
+  // Pages without h2/h3 often set section titles as short plain paragraphs
+  // ("פתיחה", "חלק א'"). A run of them is title + subtitle (h2, h3); once such a
+  // pair has been seen, a lone short paragraph is a subsection title (h3).
+  function plainHeading(book, p, parent, src) {
+    if (!book.art.plainHeads || parent.localName !== 'body') return false;
+    var t = txt(p.textContent);
+    if (!t || t.length > 60 || t.split(' ').length > 8) return false;
+    // ends like a sentence or a quote; a Hebrew numeral ("חלק א'") is fine
+    if (/[.,;:\u05f4"\u201d)\]]$/.test(t) || (/'$/.test(t) && !/(^|\s)[\u05d0-\u05ea]{1,2}'$/.test(t))) return false;
+    if (p.querySelector('img, a, br')) return false;
+    var next = src.nextElementSibling;
+    if (!next || next.localName !== 'p' || txt(next.textContent).length < 80) {
+      if (!next || next.localName !== 'p' || txt(next.textContent).length > 60) return false;
+    }
+    var level = book.lastHead === 2 ? 3 : (book.sawPair && txt(next.textContent).length >= 80 ? 3 : 2);
+    if (book.lastHead === 2) book.sawPair = true;
+    heading(book, parent, level, t);
+    book.lastHead = level;
+    return true;
   }
 
   function list(book, src, parent) {
@@ -578,7 +632,8 @@
         im.name = 'img/fig' + im.n + ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/svg+xml': '.svg' })[got.type];
         im.node.setAttribute('src', im.name);
       } else {
-        var p = el(book, 'p'); p.setAttribute('class', 'missing');
+        var inFig = im.node.parentNode.localName === 'figure';
+        var p = el(book, inFig ? 'p' : 'span'); p.setAttribute('class', 'missing');
         p.textContent = book.rtl ? '[התמונה לא הורדה]' : '[Figure not downloaded]';
         im.node.parentNode.replaceChild(p, im.node);
       }
@@ -635,7 +690,7 @@
       'sup { font-size: 0.7em; line-height: 0; }\na.noteref { text-decoration: none; }\n' +
       'section.footnotes { font-size: 0.9em; margin-top: 2em; }\nsection.footnotes aside { margin: 0.4em 0; }\n' +
       'section.references p { text-indent: -1.2em; padding-inline-start: 1.2em; margin: 0.2em 0; }\n' +
-      'p.missing { text-align: center; font-style: italic; }\n';
+      '.missing { text-align: center; font-style: italic; }\n';
     return s;
   }
 

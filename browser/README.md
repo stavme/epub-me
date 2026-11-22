@@ -42,6 +42,10 @@ captions; the site refused the picture download.
 - Figures with captions, tables, quotes and lists.
 - Hebrew pages (detected from the text) come out right-to-left with the David
   Libre font embedded when it can be downloaded; English pages left-to-right.
+- On blog-style sites (WordPress and similar) it takes only the post itself: the
+  site name is dropped from the title, a bold first line becomes the author
+  instead of the site's user name, and short plain lines used as section titles
+  ("פתיחה", "חלק א'") become headings in the table of contents.
 - The file passes epubcheck.
 
 ## For developers
