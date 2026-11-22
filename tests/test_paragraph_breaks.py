@@ -66,5 +66,56 @@ class EnglishBibliography(unittest.TestCase):
         self.assertFalse(check_pdf.is_justified(ragged, 500, 50))
 
 
+class LineDirection(unittest.TestCase):
+    def test_rules(self):
+        d = check_pdf.line_direction
+        body = [{"x0": 40, "x1": 500}]
+        self.assertFalse(d("7(1): 69-91.", {"x0": 90, "x1": 147}, [{"x0": 90, "x1": 506}], False, 22))
+        self.assertTrue(d("שלום עולם", {"x0": 40, "x1": 500}, [], False, 22))
+        self.assertFalse(d("2013:23) [ההדגשה שלי]", {"x0": 174, "x1": 260}, [{"x0": 174, "x1": 372}], False, 22))
+        self.assertTrue(d("(Schiff, 2013).", {"x0": 421, "x1": 500}, body, True, 22))
+        self.assertFalse(d("Annapolis began with a minimal U.S. strategy", {"x0": 174, "x1": 420}, [], True, 22))
+
+
+class ReversedParens(unittest.TestCase):
+    """Text-layer slips around Latin citations in Hebrew (Varon thesis)."""
+    cases = [
+        ("במחקר)Jackson, 1952; Vuković, 2015a(. בראיית", "במחקר (Jackson, 1952; Vuković, 2015a). בראיית"),
+        ('הדדית")MHS(, ותפיסת ה"דרך מוצא")WO(, מביאות', 'הדדית"(MHS), ותפיסת ה"דרך מוצא"(WO), מביאות'),
+        ("החוקר סוון)Savun, 2008(טען כי", "החוקר סוון (Savun, 2008) טען כי"),
+        ("מחקרים אחרים,)Zartman & Touval,2007(הגדירו", "מחקרים אחרים, (Zartman & Touval,2007) הגדירו"),
+        ("חוקרים (Chester et al., 2005 בתוך שיף, 2015(ניסו", "חוקרים (Chester et al., 2005 בתוך שיף, 2015) ניסו"),
+        ("אסטרטגי, 58-49,)3(11. ברום", "אסטרטגי, 58-49, 11(3). ברום"),
+        ("Israel Affairs, 19)4), 660-678.", "Israel Affairs, 19(4), 660-678."),
+        ("soft – it is the)skillful combination of both (Nye & Armitage, 2007 [ההדגשה שלי]",
+         "soft – it is the skillful combination of both (Nye & Armitage, 2007) [ההדגשה שלי]"),
+    ]
+
+    def test_fixed(self):
+        for raw, want in self.cases:
+            self.assertEqual(check_pdf.fix_parens(raw), want)
+
+    def test_balanced_text_untouched(self):
+        for t in ["תקין (Rice, 2011) ו(שיף)", "(Way out)WO– לצדדים", "(1) תפיסת (2) עוד"]:
+            self.assertEqual(check_pdf.fix_parens(t), t)
+
+
+class NoteAfterQuote(unittest.TestCase):
+    def test_english_quote_last_line(self):
+        self.assertEqual(check_pdf.fix_note_after_quote("[ההדגשה שלי] )achieve that. (Rice, 2011:601"),
+                         "achieve that. (Rice, 2011:601) [ההדגשה שלי]")
+        self.assertEqual(check_pdf.fix_note_after_quote("[ההדגשה שלי] )2013:23"), "2013:23) [ההדגשה שלי]")
+
+    def test_hebrew_quote(self):
+        f = lambda t: check_pdf.tidy(check_pdf.fix_note_after_quote(t))
+        self.assertEqual(f("(אולמרט[ )816 :2018 ,ההדגשה שלי]"), "(אולמרט, 2018: 816) [ההדגשה שלי]")
+        self.assertEqual(f("מוסכם (נאום הנשיא בוש ,נובמבר [ )2007ההדגשה שלי]"),
+                         "מוסכם (נאום הנשיא בוש, נובמבר 2007) [ההדגשה שלי]")
+
+    def test_other_lines_untouched(self):
+        t = "רגיל (שיף, 2018) [ההדגשה שלי]"
+        self.assertEqual(check_pdf.fix_note_after_quote(t), t)
+
+
 if __name__ == "__main__":
     unittest.main()

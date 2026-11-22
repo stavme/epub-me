@@ -73,6 +73,121 @@ def fix_order(text):
     return "\n".join(line[::-1].translate(MIRROR) for line in text.splitlines())
 
 
+NOTE_THEN_LATIN = re.compile(r"^(\[[^\[\]]*[א-ת][^\[\]]*\]) \)(.*[A-Za-z0-9].*)$")
+NOTE_AFTER_NUMBERS = re.compile(r"\[ \)([0-9a-z:,.\- ]*?)([א-ת][^\[\]]*)\]")
+
+
+def _numbers_in_order(run):
+    """'816 :2018 ,' (visual) -> ', 2018: 816'; leading punctuation moves to the end."""
+    out = []
+    for tok in reversed(run.split()):
+        m = re.match(r"^([:,.]*)(.*)$", tok)
+        out.append(m.group(2) + m.group(1))
+    return " ".join(t for t in out if t)
+
+
+def fix_note_after_quote(line):
+    """A Hebrew note in brackets ("[ההדגשה שלי]") after a citation's closing
+    paren comes out of pdftotext in the wrong run order:
+      "[ההדגשה שלי] )achieve that. (Rice, 2011:601"  (last line of an English quote)
+        -> "achieve that. (Rice, 2011:601) [ההדגשה שלי]"
+      "(אולמרט[ )816 :2018 ,ההדגשה שלי]"  (Hebrew quote)
+        -> "(אולמרט, 2018: 816) [ההדגשה שלי]"
+    When it applies: born-digital Hebrew PDFs with English or Hebrew quotes
+    that end in "(source) [note]" (Varon thesis, 2026-11-22). Lines without
+    that shape are returned unchanged."""
+    m = NOTE_THEN_LATIN.match(line.strip())
+    if m:
+        return f"{m.group(2).strip()}) {m.group(1)}"
+
+    def fix(m):
+        nums = _numbers_in_order(m.group(1))
+        return (nums + ") " if nums else ") ") + "[" + m.group(2).strip() + "]"
+
+    return NOTE_AFTER_NUMBERS.sub(fix, line)
+
+
+def _parens_ok(t):
+    depth = 0
+    for c in t:
+        depth += (c == "(") - (c == ")")
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+OPEN_AS_CLOSE = re.compile(r"(?<=[A-Za-z0-9.])\((?![A-Za-z0-9])")  # "2015(." "MHS(,"
+CLOSE_AS_OPEN = re.compile(r"(?<![A-Za-z0-9.;:!?…])\)(?=[A-Za-z0-9])")  # "בסכסוך)Jackson" ")2013:23"
+
+
+REVERSED_PAIR = re.compile(r"(?<![A-Za-z0-9.;:!?…])\)([A-Za-z0-9][^()\n]{0,120}?[A-Za-z0-9.])\((?![A-Za-z0-9])")
+
+
+# an English quote whose citation's ")" landed at the end of the quote's first
+# line: "it is the)skillful ... (Nye & Armitage, 2007 [note]" -> "... 2007) [note]"
+QUOTE_CLOSER = re.compile(r"^([^()]*?[A-Za-z,.…])\)([A-Za-z\"“][^()]*?\([^()]*?[A-Za-z0-9.])(\s*\[[^\[\]]*\])?\s*$")
+
+
+def _unmatched(t):
+    depth = bad = 0
+    for c in t:
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            if depth:
+                depth -= 1
+            else:
+                bad += 1
+    return bad + depth
+
+
+def fix_parens(p):
+    """Mirror parens that pdftotext left facing the wrong way around Latin
+    citations in Hebrew text: "בסכסוך)Jackson, 1952(" -> "בסכסוך(Jackson, 1952)",
+    "הדדי")MHS(" -> "הדדי"(MHS)".
+    Candidates: ")" glued to the Latin or digits after it, "(" glued to the
+    Latin or digits before it. A candidate pair (a ")" and the next "(") or a
+    single candidate is flipped only if that leaves fewer unmatched parens, so
+    a paragraph whose parens already balance never changes.
+    When it applies: born-digital Hebrew PDFs (Varon thesis, 2026-11-22)."""
+    if _parens_ok(p):
+        return p
+    # whole reversed pairs first: ")MHS(" ")Rice, 2011(" -> "(MHS)" "(Rice, 2011)";
+    # volume(issue) in Hebrew references: ",)3(11." -> ", 11(3)." and "19)4)" -> "19(4)"
+    whole = re.sub(r",\)(\d+)\((\d+)", r", \2(\1)", p)
+    whole = re.sub(r"\b(\d+)\)(\d+)\)", r"\1(\2)", whole)
+    whole = REVERSED_PAIR.sub(lambda m: "(" + m.group(1) + ")", whole)
+    whole = QUOTE_CLOSER.sub(r"\1 \2)\3", whole)
+    if _unmatched(whole) <= _unmatched(p):
+        p0, p = p, whole
+    else:
+        p0 = p
+    s = list(p)
+    opens = [m.start() for m in CLOSE_AS_OPEN.finditer(p)]
+    closes = [m.start() for m in OPEN_AS_CLOSE.finditer(p)]
+    moves = []
+    for i in opens:
+        later = [j for j in closes if j > i]
+        if later:
+            moves.append((i, later[0]))
+    moves += [(i,) for i in opens] + [(j,) for j in closes]
+    for mv in moves:
+        if _parens_ok("".join(s)):
+            break
+        t = s[:]
+        for k in mv:
+            t[k] = "(" if t[k] == ")" else ")"
+        if _unmatched("".join(t)) < _unmatched("".join(s)):
+            s = t
+    q = "".join(s)
+    p = p0
+    if q != p:  # the flipped parens lost their spaces: "word(Name", "2015)word"
+        q = re.sub(r"(?<=[א-ת])\((?=[A-Za-z0-9])", " (", q)
+        q = re.sub(r"\)(?=[א-ת])", ") ", q)
+        q = re.sub(r"(?<=[א-ת]),\((?=[A-Za-z0-9])", ", (", q)
+    return q
+
+
 def tidy(p):
     p = re.sub(r"\s+", " ", p).strip()
     p = re.sub(r"\s([.,;:!?])(?=[א-ת\"(])", r"\1 ", p)  # ". word" -> "word. word"
@@ -85,7 +200,7 @@ def tidy(p):
 
 
 def to_paragraphs(text):
-    paras = [tidy(p) for p in re.split(r"\n\s*\n", text)]
+    paras = [fix_parens(tidy(p)) for p in re.split(r"\n\s*\n", text)]
     return "\n\n".join(p for p in paras if p) + "\n"
 
 
@@ -189,6 +304,25 @@ def is_justified(geo, right, left):
                               for g in both) >= 0.8 * len(both)
 
 
+def line_direction(t, g, para, para_rtl, tol):
+    """True when printed line t (geometry g) reads right to left. para holds the
+    open paragraph's lines, para_rtl the direction of the previous line.
+      - a "[note]" in brackets does not count;
+      - a line with no letters ("7(1): 69-91.") keeps the previous direction;
+      - a mixed line (Hebrew with a Latin citation) inside a paragraph keeps
+        the paragraph's direction, and so does a Latin-only line that ends
+        flush right with a right-to-left paragraph (a citation on its own line);
+      - otherwise the script with more letters wins."""
+    bare = re.sub(r"\[[^\[\]]*\]", "", t)
+    heb, lat = len(HEB_ONLY.findall(bare)), len(LATIN.findall(bare))
+    if not heb and not lat:
+        return para_rtl
+    rtl = para_rtl if (para and heb and lat) else heb >= lat
+    if para and para_rtl and abs(g["x1"] - para[-1]["x1"]) <= tol:
+        rtl = True
+    return rtl
+
+
 def layout_page(pdf_path, page, n, crop=None, stats=None):
     """With pdfplumber: use line geometry and fonts for structure. A vertical gap
     or a short line ends a paragraph; very large type is a heading (# for the
@@ -198,7 +332,7 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
     raw = page_text(pdf_path, n, crop)
     if crop:
         page = page.crop(crop)
-    lines = [l for l in fix_order(raw).splitlines() if l.strip()]
+    lines = [fix_note_after_quote(l) for l in fix_order(raw).splitlines() if l.strip()]
     geo = []
     for l in page.extract_text_lines(layout=False):
         ch = [c for c in l["chars"] if c["text"].strip()]
@@ -246,7 +380,7 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
                 chunk = tidy(" ".join(para[i:k]))
                 parts.append(f"**{chunk}**" if para_bold[i] else chunk)
                 i = k
-            out.append(" ".join(parts).replace("** **", " "))
+            out.append(fix_parens(" ".join(parts).replace("** **", " ")))
         para.clear(); para_bold.clear(); para_geo.clear()
 
     for t, g, cell in rows:
@@ -268,12 +402,7 @@ def layout_page(pdf_path, page, n, crop=None, stats=None):
             continue
         if prev and (g["top"] - prev["top"] > step * 1.5 or prev["size"] >= body * 1.4):
             flush()
-        heb, lat = len(HEB_ONLY.findall(t)), len(LATIN.findall(t))
-        # a mixed line (Hebrew ending in a Latin citation) keeps its paragraph's direction
-        # and so does a Latin-only line (a citation) that ends flush with it on the right
-        rtl = heb >= lat if not (para_geo and heb and lat) else para_rtl
-        if para_geo and para_rtl and abs(g["x1"] - para_geo[-1]["x1"]) <= (right - left) * 0.05:
-            rtl = True
+        rtl = line_direction(t, g, para_geo, para_rtl, (right - left) * 0.05)
         para_rtl = rtl
         starts, ends = line_breaks(g, para_geo, right, left, rtl, justified)
         if starts:
