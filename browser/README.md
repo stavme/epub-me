@@ -36,8 +36,10 @@ If the box says some figures "could not be downloaded", the EPUB still has their
 captions; the site refused the picture download.
 
 On an iPhone or iPad, Safari would save the file under a random name, so the box
-shows a **Save / share EPUB** button instead: tap it and choose **Save to Files**
-(or send it straight to an app). The name is kept.
+shows a **Save / share EPUB** button instead: tap it and choose **Save to Files**,
+then **Dropbox** under Locations and `Apps/EpubMe/books`. The name is kept.
+(Dropbox itself is not offered in that share menu for files shared by a web
+page; going through Files is the way in.)
 
 ## What you get
 
