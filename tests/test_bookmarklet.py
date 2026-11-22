@@ -30,9 +30,9 @@ class Bookmarklet(unittest.TestCase):
 @unittest.skipUnless(have_playwright() or os.environ.get("REQUIRE_BROWSER_TESTS") == "1",
                      "needs node with playwright")
 class BookmarkletInBrowser(unittest.TestCase):
-    def run_page(self, page):
+    def run_page(self, page, *mode):
         out = os.path.join(tempfile.mkdtemp(), "out.epub")
-        r = subprocess.run(["node", os.path.join(ROOT, "tests", "bookmarklet_e2e.js"), page, out],
+        r = subprocess.run(["node", os.path.join(ROOT, "tests", "bookmarklet_e2e.js"), page, out, *mode],
                            capture_output=True, text=True, timeout=180)
         self.assertEqual(r.returncode, 0, r.stderr)
         z = zipfile.ZipFile(out)
@@ -96,6 +96,12 @@ class BookmarkletInBrowser(unittest.TestCase):
         self.assertIn('<span class="missing">', t)                  # lost inline image: no <p> in <p>
         for gone in (">מאמר<", "•", "שיתוף", "פוסט אחר"):
             self.assertNotIn(gone, t)
+
+    def test_iphone_uses_share_sheet(self):
+        # iPhone Safari names blob downloads with a random id, so the box offers Share
+        s, z = self.run_page("hebrew.html", "ios")
+        self.assertEqual(s["shared"], {"name": "ישראלי - הילכו שניים יחדיו.epub", "type": "application/epub+zip"})
+        self.assertEqual(z.infolist()[0].filename, "mimetype")
 
 
 if __name__ == "__main__":

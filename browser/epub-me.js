@@ -48,17 +48,42 @@
     var files = pack(art, book, fonts);
     var blob = await zip(files);
     var name = libraryName(art) + '.epub';
-    var a = doc.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    (doc.body || doc.documentElement).appendChild(a);
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
+    var file = blob;
+    try { file = new File([blob], name, { type: 'application/epub+zip' }); } catch (e) { }
+    var url = URL.createObjectURL(file);
+    // iPhone/iPad Safari saves blob downloads under a random id ("4363948c-...")
+    // and ignores the name, so there the box offers the share sheet instead,
+    // which keeps the name (Save to Files, or send to an app).
+    var ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+    var canShare = ios && file !== blob && navigator.canShare && navigator.canShare({ files: [file] });
+    if (!canShare) {
+      var a = doc.createElement('a');
+      a.href = url;
+      a.download = name;
+      (doc.body || doc.documentElement).appendChild(a);
+      a.click();
+      setTimeout(function () { a.remove(); }, 1000);
+    }
+    setTimeout(function () { URL.revokeObjectURL(url); }, 600000);
     var lost = book.images.filter(function (im) { return !im.data; }).length;
     window.__epubMeSummary = { name: name, notes: book.noteCount, figures: book.images.length - lost,
       lostFigures: lost, sections: book.headings.length, rtl: art.rtl, fonts: fonts.length };
-    status('saved ' + name + '\n' + book.headings.length + ' sections, ' + book.noteCount + ' notes, ' +
-      (book.images.length - lost) + ' figures' + (lost ? ' (' + lost + ' figures could not be downloaded)' : ''), true);
+    var counts = book.headings.length + ' sections, ' + book.noteCount + ' notes, ' +
+      (book.images.length - lost) + ' figures' + (lost ? ' (' + lost + ' figures could not be downloaded)' : '');
+    if (!canShare) { status('saved ' + name + '\n' + counts, true); return; }
+    status('ready: ' + name + '\n' + counts + '\n');
+    var btn = doc.createElement('button');
+    btn.textContent = 'Save / share EPUB';
+    btn.setAttribute('style', 'display:block;margin-top:8px;padding:8px 12px;font:15px sans-serif;border-radius:6px;border:0;background:#fff;color:#000');
+    btn.onclick = function () {
+      navigator.share({ files: [file], title: name }).then(function () { box.remove(); }, function () { });
+    };
+    var close = doc.createElement('button');
+    close.textContent = 'Close';
+    close.setAttribute('style', 'margin-top:6px;padding:4px 10px;font:13px sans-serif;border-radius:6px;border:1px solid #888;background:none;color:#fff');
+    close.onclick = function () { box.remove(); };
+    box.appendChild(btn);
+    box.appendChild(close);
   }
 
   // ---------- reading the page ----------

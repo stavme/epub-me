@@ -35,6 +35,10 @@ new line.
 If the box says some figures "could not be downloaded", the EPUB still has their
 captions; the site refused the picture download.
 
+On an iPhone or iPad, Safari would save the file under a random name, so the box
+shows a **Save / share EPUB** button instead: tap it and choose **Save to Files**
+(or send it straight to an app). The name is kept.
+
 ## What you get
 
 - Title and author(s) (metadata is title and author only).
